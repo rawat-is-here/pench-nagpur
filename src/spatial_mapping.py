@@ -19,16 +19,17 @@ def invalidate_territory_cache(tiger_id=None):
 def calculate_territory(tiger_id):
     """
     Fetches captures from Supabase and calculates the MCP (Minimum Convex Polygon).
-    Returns: (area_in_sqkm, centroid_dict, polygon_coordinates)
+    Returns: (area_in_sqkm, centroid_dict, polygon_coordinates, capture_points)
     - area_in_sqkm: float
     - centroid_dict: {"lat": float, "lon": float}
     - polygon_coordinates: list of [lat, lon] pairs for Leaflet mapping
+    - capture_points: list of dicts containing lat, lon, station, timestamp
     """
     global _territory_cache
     if tiger_id in _territory_cache:
         print(f"Returning cached territory for tiger {tiger_id}")
         cached = _territory_cache[tiger_id]
-        return cached["area"], cached["centroid"], cached["polygon"]
+        return cached["area"], cached["centroid"], cached["polygon"], cached.get("capture_points", [])
 
     db = get_db()
     
@@ -57,9 +58,10 @@ def calculate_territory(tiger_id):
         _territory_cache[tiger_id] = {
             "area": 0.0,
             "centroid": centroid,
-            "polygon": []
+            "polygon": [],
+            "capture_points": capture_points
         }
-        return 0.0, centroid, []
+        return 0.0, centroid, [], capture_points
         
     # Extract coordinates
     lats = [p["latitude"] for p in points]
@@ -87,9 +89,10 @@ def calculate_territory(tiger_id):
         _territory_cache[tiger_id] = {
             "area": 0.0,
             "centroid": centroid,
-            "polygon": []
+            "polygon": [],
+            "capture_points": capture_points
         }
-        return 0.0, centroid, []
+        return 0.0, centroid, [], capture_points
         
     # Calculate area in sq km
     area_sqkm = mcp.area / 1_000_000
@@ -114,10 +117,11 @@ def calculate_territory(tiger_id):
     _territory_cache[tiger_id] = {
         "area": area_sqkm,
         "centroid": centroid_gps_dict,
-        "polygon": polygon_gps
+        "polygon": polygon_gps,
+        "capture_points": capture_points
     }
     
-    return area_sqkm, centroid_gps_dict, polygon_gps
+    return area_sqkm, centroid_gps_dict, polygon_gps, capture_points
 
 def get_territory_overlaps():
     """

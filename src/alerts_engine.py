@@ -160,6 +160,20 @@ def check_prolonged_absences(absence_threshold_days=14):
                     days_absent = (now - dt).days
                     
                     if days_absent >= absence_threshold_days:
+                        # Check if there is already an unresolved PROLONGED_ABSENCE alert for this tiger
+                        try:
+                            existing = db.table("alerts")\
+                                         .select("id")\
+                                         .eq("tiger_id", t_id)\
+                                         .eq("alert_type", "PROLONGED_ABSENCE")\
+                                         .eq("resolved", False)\
+                                         .execute()
+                            if existing.data and len(existing.data) > 0:
+                                # Alert already active, don't duplicate
+                                continue
+                        except Exception as e_check:
+                            print(f"Error checking existing prolonged absence alerts for {t_id}: {e_check}")
+
                         msg = f"PROLONGED ABSENCE ALERT: Tiger {t_id} has not been recorded across the sensor grid for {days_absent} days (Last seen: {last_cap.get('station')})."
                         evidence = {
                             "days_absent": days_absent,

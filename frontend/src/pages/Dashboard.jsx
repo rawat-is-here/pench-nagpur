@@ -198,11 +198,11 @@ export default function Dashboard({ refreshTrigger }) {
             Enrolled Individuals
           </div>
           <div className="stat-value">{stats.identified_tigers || 2} <span className="text-sm font-normal text-slate-500">Tigers</span></div>
-          <div className="stat-meta">
-            <span className="text-emerald-700 font-semibold flex items-center">
+          <div className="stat-meta flex items-center gap-1.5">
+            <span className="text-emerald-700 font-bold flex items-center gap-0.5">
               <ArrowUpRight size={13} /> 100%
             </span>
-            <span>Biometric catalogued</span>
+            <span className="text-slate-500">Biometric catalogued</span>
           </div>
         </div>
 
@@ -398,13 +398,13 @@ export default function Dashboard({ refreshTrigger }) {
             <div className="panel-header">
               <div className="panel-title">
                 <UploadCloud size={17} className="text-amber-600" />
-                <span>Live Camera Trap Triage & Re-ID</span>
+                <span>Live AI Triage & Re-ID</span>
               </div>
               <span className="badge-tag badge-tiger">MegaDetector V6</span>
             </div>
 
             <div className="panel-body space-y-4">
-              <p className="text-xs text-slate-600">
+              <p className="text-xs text-slate-600 leading-relaxed px-[22px] pt-3">
                 Upload a raw frame to test automated blank filtering, flank isolation, and stripe matching against the FAISS catalogue.
               </p>
 

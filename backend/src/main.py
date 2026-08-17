@@ -84,7 +84,7 @@ async def upload_image(file: UploadFile = File(...)):
 @app.get("/territory/{tiger_id}")
 async def get_territory(tiger_id: str):
     """Runs Task 3 to calculate and return territory area and centroid."""
-    area_sqkm, centroid = calculate_territory(tiger_id)
+    area_sqkm, centroid, _, _ = calculate_territory(tiger_id)
     
     if area_sqkm == 0.0:
         return {

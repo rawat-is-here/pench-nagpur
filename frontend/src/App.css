@@ -360,6 +360,10 @@
   letter-spacing: 0.09em;
 
   color: var(--text-muted);
+
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .stat-value {
@@ -1026,6 +1030,73 @@
 
 .data-table tr:hover td {
   background: #fbfdfa;
+}
+
+/* =========================================================
+   BADGES & TAGS
+   ========================================================= */
+
+.badge-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 750;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+
+.badge-tiger {
+  background: var(--tiger-soft);
+  color: var(--tiger-dark);
+  border: 1px solid var(--tiger-border);
+}
+
+.badge-info {
+  background: var(--status-cyan-bg);
+  color: var(--status-cyan);
+  border: 1px solid var(--status-cyan-border);
+}
+
+.badge-warning {
+  background: var(--status-amber-bg);
+  color: var(--status-amber);
+  border: 1px solid var(--status-amber-border);
+}
+
+.badge-critical {
+  background: var(--status-crimson-bg);
+  color: var(--status-crimson);
+  border: 1px solid var(--status-crimson-border);
+}
+
+/* =========================================================
+   DROPZONE & DIAGNOSTIC BOXES
+   ========================================================= */
+
+.dropzone-container {
+  padding: 30px 20px;
+  border: 2px dashed var(--surface-border-strong);
+  border-radius: 12px;
+  background: #fafcf9;
+  text-align: center;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.dropzone-container:hover {
+  border-color: var(--forest-500);
+  background: var(--forest-50);
+}
+
+.quick-telemetry-box {
+  padding: 12px;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  margin-bottom: 12px;
 }
 
 /* =========================================================

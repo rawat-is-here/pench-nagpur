@@ -9,7 +9,7 @@ export default function Layout({ onRefresh, isRefreshing }) {
       <Sidebar onRefresh={onRefresh} isRefreshing={isRefreshing} />
       <div className="main-area">
         <Topbar onRefresh={onRefresh} isRefreshing={isRefreshing} />
-        <main className="content-container">
+        <main className="page-content">
           <Outlet />
         </main>
       </div>

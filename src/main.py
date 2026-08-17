@@ -16,7 +16,7 @@ import re
 from src.triage import process_triage
 from src.stripe_matcher import match_tiger, add_embedding_to_faiss
 from src.spatial_mapping import calculate_territory, get_territory_overlaps, invalidate_territory_cache
-from src.alerts_engine import check_deviation, run_alerts_check
+from src.alerts_engine import check_deviation, run_alerts_check, check_prolonged_absences
 from src.db import (
     get_db, get_all_tigers, enroll_tiger, add_capture, add_alert, 
     get_active_alerts, get_pending_reviews, get_capture_by_id, 
@@ -304,7 +304,7 @@ async def upload_image(file: UploadFile = File(...)):
 @app.get("/territory/{tiger_id}")
 async def get_territory(tiger_id: str):
     """Runs Task 3 to calculate and return territory area, centroid, and convex hull polygon coordinates."""
-    area_sqkm, centroid, polygon = calculate_territory(tiger_id)
+    area_sqkm, centroid, polygon, capture_points = calculate_territory(tiger_id)
     
     if area_sqkm == 0.0 and centroid is None:
         return {
@@ -317,7 +317,8 @@ async def get_territory(tiger_id: str):
         "tiger_id": tiger_id,
         "core_area_sqkm": round(area_sqkm, 2),
         "centroid": centroid,
-        "polygon": polygon
+        "polygon": polygon,
+        "capture_points": capture_points
     }
 
 @app.get("/territory_overlaps")
@@ -349,6 +350,10 @@ async def check_alerts(ping: GPSPing):
 async def get_alerts():
     """Fetches all active alerts from Supabase."""
     try:
+        try:
+            check_prolonged_absences()
+        except Exception as ae:
+            print(f"Error running prolonged absence check: {ae}")
         active_alerts = get_active_alerts()
         return active_alerts
     except Exception as e:
@@ -393,8 +398,14 @@ async def get_all_territories():
         tigers = get_all_tigers()
         results = []
         for t in tigers:
-            terr = calculate_territory(t["id"])
-            results.append(terr)
+            area_sqkm, centroid, polygon, capture_points = calculate_territory(t["id"])
+            results.append({
+                "tiger_id": t["id"],
+                "core_area_sqkm": round(area_sqkm, 2),
+                "centroid": centroid,
+                "polygon": polygon,
+                "capture_points": capture_points
+            })
         return results
     except Exception as e:
         print(f"Error calculating all territories: {e}")
