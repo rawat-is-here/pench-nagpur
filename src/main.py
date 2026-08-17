@@ -744,11 +744,7 @@ async def manually_enter_quarantine(filename: str):
         shutil.move(quarantine_path, raw_path)
         
         # Extract telemetry metadata dynamically from EXIF or filename
-        telemetry = get_image_telemetry(raw_path)
-        lat = telemetry.get("lat")
-        lon = telemetry.get("lon")
-        station = telemetry.get("station")
-        timestamp = telemetry.get("timestamp")
+        station, timestamp, lat, lon = get_image_telemetry(raw_path)
         
         # Add to captures table with pending_review status
         from src.db import add_capture
