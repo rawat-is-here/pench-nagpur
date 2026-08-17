@@ -23,7 +23,7 @@ from src.db import (
     update_capture_resolution, get_captures_for_tiger
 )
 
-app = FastAPI(title="Pench Tiger Intelligence API")
+app = FastAPI(title="TerraStripe - Pench Tiger Intelligence API")
 
 # Allow frontend to communicate with backend
 app.add_middleware(
@@ -374,6 +374,46 @@ async def get_tigers():
     except Exception as e:
         print(f"Error fetching tigers: {e}")
         return []
+
+@app.get("/captures")
+async def get_captures():
+    """Fetches all recent camera trap capture sightings."""
+    try:
+        from src.db import get_all_captures
+        captures = get_all_captures()
+        return captures or []
+    except Exception as e:
+        print(f"Error fetching captures: {e}")
+        return []
+
+@app.get("/all_territories")
+async def get_all_territories():
+    """Returns home range MCP calculations for all enrolled tigers."""
+    try:
+        tigers = get_all_tigers()
+        results = []
+        for t in tigers:
+            terr = calculate_territory(t["id"])
+            results.append(terr)
+        return results
+    except Exception as e:
+        print(f"Error calculating all territories: {e}")
+        return []
+
+@app.get("/camera_stations")
+async def get_camera_stations():
+    """Returns active camera trap station telemetry points across Pench Reserve."""
+    stations = [
+        {"id": "STATION_A01", "lat": 21.650, "lon": 79.201, "zone": "Core Central", "status": "active", "battery": "94%"},
+        {"id": "STATION_A02", "lat": 21.661, "lon": 79.215, "zone": "Core North", "status": "active", "battery": "88%"},
+        {"id": "STATION_A03", "lat": 21.642, "lon": 79.220, "zone": "Core South", "status": "active", "battery": "91%"},
+        {"id": "STATION_A04", "lat": 21.655, "lon": 79.190, "zone": "Core West", "status": "active", "battery": "79%"},
+        {"id": "STATION_A05", "lat": 21.648, "lon": 79.230, "zone": "Buffer Central", "status": "active", "battery": "96%"},
+        {"id": "STATION_A06", "lat": 21.675, "lon": 79.240, "zone": "Buffer North", "status": "active", "battery": "82%"},
+        {"id": "STATION_A07", "lat": 21.668, "lon": 79.225, "zone": "Core East", "status": "active", "battery": "87%"},
+        {"id": "STATION_A08", "lat": 21.658, "lon": 79.250, "zone": "Buffer East", "status": "active", "battery": "90%"},
+    ]
+    return stations
 
 class ResolveReviewRequest(BaseModel):
     capture_id: int
