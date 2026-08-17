@@ -34,7 +34,7 @@ export default function Sidebar({ onRefresh, isRefreshing }) {
             <Shield size={22} />
           </div>
           <div>
-            <div className="brand-title">TIGERWATCH</div>
+            <div className="brand-title">TERRASTRIPE</div>
             <div className="brand-subtitle">Reserve Spatial Intelligence</div>
           </div>
         </div>
@@ -69,11 +69,7 @@ export default function Sidebar({ onRefresh, isRefreshing }) {
 
         <div className="sidebar-section">
           <div className="sidebar-section-title">Optical Grid & Triage</div>
-          <NavLink to="/camera-traps" className={getNavClass}>
-            <Camera size={16} />
-            <span>Camera Trap Nodes</span>
-            <span className="nav-counter">142</span>
-          </NavLink>
+
           <NavLink to="/add-dataset" className={getNavClass}>
             <FolderSync size={16} />
             <span>Add new dataset</span>
