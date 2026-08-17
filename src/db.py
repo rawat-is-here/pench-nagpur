@@ -65,6 +65,24 @@ def get_all_captures():
     response = supabase.table("captures").select("*").execute()
     return response.data
 
+def get_pending_reviews():
+    """Fetches all captures pending human reviewer resolution."""
+    response = supabase.table("captures").select("*").eq("status", "pending_review").order("timestamp", desc=True).execute()
+    return response.data
+
+def get_capture_by_id(capture_id: int):
+    """Retrieves a single capture by primary key ID."""
+    response = supabase.table("captures").select("*").eq("id", capture_id).execute()
+    return response.data[0] if response.data else None
+
+def update_capture_resolution(capture_id: int, tiger_id: str, status: str = "processed"):
+    """Updates the assigned tiger ID and status after human verification."""
+    data = {"status": status}
+    if tiger_id:
+        data["tiger_id"] = tiger_id
+    response = supabase.table("captures").update(data).eq("id", capture_id).execute()
+    return response.data
+
 # --- Alerts Table Helper Functions ---
 
 def add_alert(tiger_id: str, alert_type: str, severity: str, message: str, evidence: dict = None):

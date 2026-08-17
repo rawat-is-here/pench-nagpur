@@ -223,6 +223,18 @@ def enroll_manually(file_path, bbox, custom_id):
         json.dump(tiger_database, f)
     return vector.tolist()
 
+def add_embedding_to_faiss(vector, tiger_id):
+    """Adds a pre-extracted embedding vector to FAISS and updates the local cache."""
+    if isinstance(vector, list):
+        vector = np.array(vector, dtype=np.float32)
+    if vector.ndim == 1:
+        vector = np.expand_dims(vector, axis=0)
+    index.add(vector)
+    tiger_database.append(tiger_id)
+    faiss.write_index(index, INDEX_PATH)
+    with open(DB_MAP_PATH, "w") as f:
+        json.dump(tiger_database, f)
+
 def sync_faiss_with_database():
     """Queries all captures from Supabase and rebuilds the FAISS index."""
     global index, tiger_database

@@ -61,7 +61,20 @@ def seed():
             confidence=0.93
         )
 
-    print("Seeding complete! Run the FastAPI server and trigger alerts checking next.")
+    # 5. Add an Ambiguous Sighting for Human-in-the-Loop Demonstration
+    print("Seeding an ambiguous sighting for Human-in-the-Loop review queue...")
+    add_capture(
+        tiger_id="T-001",
+        image_path="000002.jpg",
+        station="STATION_A03",
+        timestamp="2026-08-16T14:20:00Z",
+        latitude=21.644,
+        longitude=79.222,
+        status="pending_review",
+        confidence=0.72
+    )
+
+    print("Seeding complete! Database initialized with resident tigers, history, and 1 pending review.")
 
 if __name__ == "__main__":
     seed()

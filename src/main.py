@@ -1,10 +1,12 @@
 from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import shutil
 import os
 import hashlib
 import time
+import json
 from datetime import datetime
 from PIL import Image
 from PIL.ExifTags import TAGS, GPSTAGS
@@ -12,10 +14,14 @@ import re
 
 # Import modular functions
 from src.triage import process_triage
-from src.stripe_matcher import match_tiger
+from src.stripe_matcher import match_tiger, add_embedding_to_faiss
 from src.spatial_mapping import calculate_territory, get_territory_overlaps, invalidate_territory_cache
 from src.alerts_engine import check_deviation, run_alerts_check
-from src.db import get_db, get_all_tigers, enroll_tiger, add_capture, add_alert, get_active_alerts
+from src.db import (
+    get_db, get_all_tigers, enroll_tiger, add_capture, add_alert, 
+    get_active_alerts, get_pending_reviews, get_capture_by_id, 
+    update_capture_resolution, get_captures_for_tiger
+)
 
 app = FastAPI(title="Pench Tiger Intelligence API")
 
@@ -28,9 +34,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Ensure data directories exist
+# Ensure data directories exist and mount static file serving
 os.makedirs("data/raw", exist_ok=True)
+os.makedirs("data/cropped", exist_ok=True)
+os.makedirs("data/flanks", exist_ok=True)
 os.makedirs("data/quarantine", exist_ok=True)
+
+app.mount("/data", StaticFiles(directory="data"), name="data")
 
 # Define the data structure for incoming GPS pings
 class GPSPing(BaseModel):
@@ -364,6 +374,193 @@ async def get_tigers():
     except Exception as e:
         print(f"Error fetching tigers: {e}")
         return []
+
+class ResolveReviewRequest(BaseModel):
+    capture_id: int
+    action: str # "confirm", "reassign", "new_tiger", "reject"
+    target_tiger_id: str = None
+
+@app.get("/pending_reviews")
+async def get_pending_reviews_endpoint():
+    """Fetches all captures flagged as ambiguous (pending human review) with reference comparison images."""
+    try:
+        reviews = get_pending_reviews()
+        formatted_reviews = []
+        for r in reviews:
+            tiger_id = r.get("tiger_id")
+            # Fetch reference images for this tiger
+            ref_captures = get_captures_for_tiger(tiger_id) if tiger_id else []
+            ref_images = [
+                c.get("image_path") for c in ref_captures 
+                if c.get("status") == "processed" and c.get("image_path") != r.get("image_path")
+            ][:3]
+            
+            # Format image paths for HTTP serving
+            img_name = os.path.basename(r.get("image_path", ""))
+            candidate_raw_url = f"/data/raw/{img_name}"
+            candidate_flank_url = f"/data/flanks/{img_name}" if os.path.exists(f"data/flanks/{img_name}") else candidate_raw_url
+            candidate_crop_url = f"/data/cropped/{img_name}" if os.path.exists(f"data/cropped/{img_name}") else candidate_raw_url
+            
+            ref_urls = []
+            for ref in ref_images:
+                ref_name = os.path.basename(ref)
+                ref_urls.append({
+                    "raw_url": f"/data/raw/{ref_name}" if os.path.exists(f"data/raw/{ref_name}") else None,
+                    "flank_url": f"/data/flanks/{ref_name}" if os.path.exists(f"data/flanks/{ref_name}") else None
+                })
+                
+            formatted_reviews.append({
+                "id": r.get("id"),
+                "candidate_tiger_id": tiger_id,
+                "confidence": r.get("confidence", 0.0),
+                "distance_score": round(1.0 - r.get("confidence", 0.0), 4),
+                "station": r.get("station"),
+                "timestamp": r.get("timestamp"),
+                "latitude": r.get("latitude"),
+                "longitude": r.get("longitude"),
+                "image_name": img_name,
+                "raw_url": candidate_raw_url,
+                "flank_url": candidate_flank_url,
+                "crop_url": candidate_crop_url,
+                "reference_images": ref_urls
+            })
+        return formatted_reviews
+    except Exception as e:
+        print(f"Error fetching pending reviews: {e}")
+        return []
+
+@app.post("/resolve_review")
+async def resolve_review_endpoint(req: ResolveReviewRequest):
+    """Processes human reviewer decision for an ambiguous tiger match."""
+    try:
+        capture = get_capture_by_id(req.capture_id)
+        if not capture:
+            return {"status": "error", "message": f"Capture {req.capture_id} not found."}
+            
+        final_tiger_id = capture.get("tiger_id")
+        embedding = capture.get("embedding")
+        if isinstance(embedding, str):
+            try:
+                embedding = json.loads(embedding)
+            except:
+                pass
+                
+        if req.action == "confirm":
+            # Confirmed match to candidate
+            update_capture_resolution(req.capture_id, final_tiger_id, "processed")
+            if embedding:
+                add_embedding_to_faiss(embedding, final_tiger_id)
+            invalidate_territory_cache(final_tiger_id)
+            msg = f"Match confirmed: Assigned to {final_tiger_id}"
+            
+        elif req.action == "reassign":
+            # Reassigned to existing tiger
+            final_tiger_id = req.target_tiger_id
+            update_capture_resolution(req.capture_id, final_tiger_id, "processed")
+            if embedding:
+                add_embedding_to_faiss(embedding, final_tiger_id)
+            invalidate_territory_cache(final_tiger_id)
+            msg = f"Capture reassigned to {final_tiger_id}"
+            
+        elif req.action == "new_tiger":
+            # Enrolled as new tiger
+            tigers = get_all_tigers()
+            new_id = f"T-{len(tigers) + 1:03d}"
+            enroll_tiger(new_id, f"Individual {new_id}")
+            final_tiger_id = new_id
+            update_capture_resolution(req.capture_id, final_tiger_id, "processed")
+            if embedding:
+                add_embedding_to_faiss(embedding, final_tiger_id)
+            invalidate_territory_cache(final_tiger_id)
+            msg = f"New individual enrolled: {new_id}"
+            
+        elif req.action == "reject":
+            update_capture_resolution(req.capture_id, None, "rejected")
+            return {"status": "success", "message": f"Capture {req.capture_id} marked as rejected."}
+            
+        else:
+            return {"status": "error", "message": f"Unknown action '{req.action}'."}
+            
+        # Trigger territory & alert checks
+        lat = capture.get("latitude")
+        lon = capture.get("longitude")
+        station = capture.get("station")
+        timestamp = capture.get("timestamp")
+        
+        if lat and lon and station and timestamp:
+            try:
+                run_alerts_check(final_tiger_id, lat, lon, station, timestamp)
+            except Exception as e:
+                print(f"Error checking alerts after resolution: {e}")
+                
+        return {
+            "status": "success",
+            "message": msg,
+            "tiger_id": final_tiger_id,
+            "capture_id": req.capture_id
+        }
+    except Exception as e:
+        print(f"Error resolving review: {e}")
+        return {"status": "error", "message": str(e)}
+
+@app.get("/quarantined_images")
+async def get_quarantined_images():
+    """Lists all quarantined images with file sizes and timestamps (Pillar i)."""
+    quarantine_dir = "data/quarantine"
+    items = []
+    if os.path.exists(quarantine_dir):
+        for entry in os.scandir(quarantine_dir):
+            if entry.is_file():
+                items.append({
+                    "filename": entry.name,
+                    "size_kb": round(entry.stat().st_size / 1024, 1),
+                    "modified_time": datetime.fromtimestamp(entry.stat().st_mtime).isoformat(),
+                    "image_url": f"/data/quarantine/{entry.name}"
+                })
+    return items
+
+@app.post("/restore_quarantine/{filename}")
+async def restore_quarantine(filename: str):
+    """Safely restores a quarantined blank frame and re-evaluates through the AI pipeline."""
+    quarantine_path = os.path.join("data/quarantine", filename)
+    raw_path = os.path.join("data/raw", filename)
+    
+    if not os.path.exists(quarantine_path):
+        return {"status": "error", "message": f"File '{filename}' not found in quarantine."}
+        
+    shutil.move(quarantine_path, raw_path)
+    
+    # Run triage & matching
+    has_animal, bbox = process_triage(raw_path, confidence_threshold=0.20)
+    station, timestamp, lat, lon = get_image_telemetry(raw_path)
+    
+    if not has_animal:
+        bbox = [0, 0, 100, 100]
+        
+    tiger_id, distance, match_status, match_message, embedding = match_tiger(raw_path, bbox)
+    if match_status == "enrolled":
+        enroll_tiger(tiger_id)
+        
+    capture_status = "processed" if match_status != "pending_review" else "pending_review"
+    add_capture(
+        tiger_id=tiger_id,
+        image_path=filename,
+        station=station,
+        timestamp=timestamp,
+        latitude=lat,
+        longitude=lon,
+        status=capture_status,
+        confidence=round(1.0 - distance, 4),
+        embedding=embedding
+    )
+    invalidate_territory_cache(tiger_id)
+    
+    return {
+        "status": "success",
+        "message": f"Restored {filename} and processed as {tiger_id} ({match_status}).",
+        "tiger_id": tiger_id,
+        "match_status": match_status
+    }
 
 @app.post("/bulk_triage")
 async def bulk_triage(req: BulkTriageRequest):
