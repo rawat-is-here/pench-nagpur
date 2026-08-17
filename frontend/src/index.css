@@ -1,28 +1,59 @@
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
 @import "tailwindcss";
 
 :root {
-  --forest-950: #0b2117;
-  --forest-900: #102d20;
-  --forest-800: #163a2a;
-  --forest-700: #24553d;
-  --forest-600: #2f6b4f;
-  --forest-500: #3f8060;
+  /* Refreshing Canvas & Surfaces */
+  --canvas-bg: #f4f7f4;
+  --surface-card: #ffffff;
+  --surface-subtle: #ebf2eb;
+  --surface-tint: #e2ede2;
+  --surface-border: #dbe4dc;
+  --surface-border-strong: #c2d4c4;
 
-  --tiger-500: #c98222;
-  --tiger-400: #e1a23b;
-  --tiger-soft: #f5e8cf;
+  /* Deep Forest Brand & Structure */
+  --forest-950: #091a12;
+  --forest-900: #112c20;
+  --forest-800: #183e2d;
+  --forest-700: #22563f;
+  --forest-600: #2d7354;
+  --forest-500: #3c936c;
+  --forest-100: #e5f3eb;
+  --forest-50: #f0f8f3;
 
-  --page-bg: #f3f5f0;
-  --card-bg: #ffffff;
-  --border: #dfe5dd;
+  /* Apex Tiger Ochre / Amber Accents */
+  --tiger-primary: #d97706;
+  --tiger-dark: #b45309;
+  --tiger-light: #f59e0b;
+  --tiger-soft: #fef3c7;
+  --tiger-border: #fde68a;
 
-  --text-primary: #17231c;
-  --text-secondary: #68756d;
-  --text-muted: #8b968f;
+  /* Telemetry Status Colors */
+  --status-emerald: #059669;
+  --status-emerald-bg: #ecfdf5;
+  --status-emerald-border: #a7f3d0;
 
-  --danger: #c94a45;
-  --warning: #c98222;
-  --success: #3f8060;
+  --status-amber: #d97706;
+  --status-amber-bg: #fffbeb;
+  --status-amber-border: #fde68a;
+
+  --status-crimson: #dc2626;
+  --status-crimson-bg: #fef2f2;
+  --status-crimson-border: #fecaca;
+
+  --status-cyan: #0284c7;
+  --status-cyan-bg: #f0f9ff;
+  --status-cyan-border: #bae6fd;
+
+  /* Typography */
+  --text-main: #13241b;
+  --text-secondary: #4a5d52;
+  --text-muted: #788d81;
+  --text-inverted: #ffffff;
+
+  /* Shadows */
+  --shadow-soft: 0 2px 10px -2px rgba(17, 44, 32, 0.05), 0 4px 20px -4px rgba(17, 44, 32, 0.06);
+  --shadow-card: 0 4px 16px -2px rgba(17, 44, 32, 0.07), 0 1px 3px 0 rgba(17, 44, 32, 0.04);
+  --shadow-hover: 0 10px 25px -4px rgba(17, 44, 32, 0.1), 0 2px 6px -1px rgba(17, 44, 32, 0.05);
 }
 
 * {
@@ -37,65 +68,87 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
-
-  background: var(--page-bg);
-  color: var(--text-primary);
-
-  font-family:
-    Inter,
-    ui-sans-serif,
-    system-ui,
-    -apple-system,
-    BlinkMacSystemFont,
-    "Segoe UI",
-    sans-serif;
-
+  background-color: var(--canvas-bg);
+  background-image: 
+    radial-gradient(circle at 15% 15%, rgba(45, 115, 84, 0.04) 0%, transparent 40%),
+    radial-gradient(circle at 85% 85%, rgba(217, 119, 6, 0.03) 0%, transparent 40%);
+  color: var(--text-main);
+  font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-button,
-input,
-select {
-  font: inherit;
+code, pre, .font-mono, .telemetry-val {
+  font-family: 'JetBrains Mono', monospace;
+}
+
+button, input, select, textarea {
+  font-family: inherit;
 }
 
 button {
   cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 ::selection {
-  background: rgba(201, 130, 34, 0.22);
-  color: var(--text-primary);
+  background: rgba(217, 119, 6, 0.2);
+  color: var(--forest-950);
 }
 
+/* Custom Scrollbars */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  background: transparent;
+  background: var(--surface-subtle);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #c8d0c9;
+  background: var(--surface-border-strong);
   border-radius: 999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #aab5ad;
+  background: var(--forest-600);
 }
 
-/* Leaflet */
+/* Leaflet Custom Styling for Balanced Light Map */
 .leaflet-container {
   font-family: inherit;
+  border-radius: 12px;
+  box-shadow: inset 0 0 0 1px var(--surface-border);
+}
+
+.leaflet-control-zoom {
+  border: 1px solid var(--surface-border) !important;
+  box-shadow: var(--shadow-soft) !important;
+  border-radius: 8px !important;
+  overflow: hidden;
 }
 
 .leaflet-control-zoom a {
-  color: var(--forest-800) !important;
+  background-color: #ffffff !important;
+  color: var(--forest-900) !important;
+  border-bottom: 1px solid var(--surface-border) !important;
 }
 
-.leaflet-popup-content-wrapper,
+.leaflet-control-zoom a:hover {
+  background-color: var(--forest-50) !important;
+  color: var(--tiger-primary) !important;
+}
+
+.leaflet-popup-content-wrapper {
+  background: #ffffff !important;
+  color: var(--text-main) !important;
+  border-radius: 10px !important;
+  box-shadow: 0 10px 25px -5px rgba(17, 44, 32, 0.15) !important;
+  border: 1px solid var(--surface-border);
+  padding: 4px;
+}
+
 .leaflet-popup-tip {
-  border-radius: 10px;
+  background: #ffffff !important;
 }

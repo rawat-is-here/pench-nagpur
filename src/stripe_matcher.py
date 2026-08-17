@@ -9,11 +9,23 @@ import os
 import json
 import cv2
 
-print("Loading ResNet50 and FAISS Index into server memory...")
-# 1. Initialize Deep Learning Model Globally
-weights = models.ResNet50_Weights.IMAGENET1K_V2
-resnet = models.resnet50(weights=weights)
-model = nn.Sequential(*list(resnet.children())[:-1])
+# 1. Initialize Deep Learning Model (Fine-tuned Metric Learning or Pre-trained Fallback)
+WEIGHTS_PATH = "tiger_stripe_resnet50.pth"
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+if os.path.exists(WEIGHTS_PATH):
+    print(f"Loading custom fine-tuned Tiger Stripe Model from '{WEIGHTS_PATH}' on {device}...")
+    resnet = models.resnet50(weights=None)
+    model = nn.Sequential(*list(resnet.children())[:-1])
+    state_dict = torch.load(WEIGHTS_PATH, map_location=device)
+    model.load_state_dict(state_dict)
+else:
+    print(f"Loading ImageNet pre-trained ResNet50 (Fine-tuned '{WEIGHTS_PATH}' not found, using baseline)...")
+    weights = models.ResNet50_Weights.IMAGENET1K_V2
+    resnet = models.resnet50(weights=weights)
+    model = nn.Sequential(*list(resnet.children())[:-1])
+
+model.to(device)
 model.eval()
 
 transform = transforms.Compose([
@@ -109,8 +121,7 @@ def preprocess_stripes(flank_image):
 
 def extract_features(image_path, bbox=None):
     """
-    Isolates the flank, preprocesses stripe patterns, 
-    and extracts a normalized 2048-dimensional ResNet-50 embedding.
+    Isolates the flank and extracts a normalized 2048-dimensional ResNet-50 embedding.
     """
     image = Image.open(image_path).convert('RGB')
     filename = os.path.basename(image_path)
@@ -131,15 +142,12 @@ def extract_features(image_path, bbox=None):
     else:
         flank = image
         
-    # Task 2: Stripe Extraction Enhancement
-    preprocessed_flank = preprocess_stripes(flank)
-    
-    tensor = transform(preprocessed_flank).unsqueeze(0)
+    tensor = transform(flank).unsqueeze(0).to(device)
     
     with torch.no_grad():
         features = model(tensor)
         
-    vector = features.squeeze().numpy()
+    vector = features.squeeze().cpu().numpy()
     
     # Normalize features for cosine similarity (L2 distance on normalized vectors = Cosine)
     norm = np.linalg.norm(vector)
@@ -147,7 +155,7 @@ def extract_features(image_path, bbox=None):
         vector = vector / norm
     return vector
 
-def match_tiger(file_path, bbox=None, auto_match_threshold=0.20, enroll_threshold=0.40):
+def match_tiger(file_path, bbox=None, auto_match_threshold=0.20, enroll_threshold=0.45):
     """
     Compares image to database. 
     Returns: (tiger_id, distance_score, status, message, embedding_list)
@@ -215,6 +223,18 @@ def enroll_manually(file_path, bbox, custom_id):
         json.dump(tiger_database, f)
     return vector.tolist()
 
+def add_embedding_to_faiss(vector, tiger_id):
+    """Adds a pre-extracted embedding vector to FAISS and updates the local cache."""
+    if isinstance(vector, list):
+        vector = np.array(vector, dtype=np.float32)
+    if vector.ndim == 1:
+        vector = np.expand_dims(vector, axis=0)
+    index.add(vector)
+    tiger_database.append(tiger_id)
+    faiss.write_index(index, INDEX_PATH)
+    with open(DB_MAP_PATH, "w") as f:
+        json.dump(tiger_database, f)
+
 def sync_faiss_with_database():
     """Queries all captures from Supabase and rebuilds the FAISS index."""
     global index, tiger_database
@@ -223,7 +243,7 @@ def sync_faiss_with_database():
         from src.db import get_db
         db = get_db()
         # Fetch all processed captures that have non-null embeddings
-        res = db.table("captures").select("tiger_id, embedding, status").neq("embedding", "null").execute()
+        res = db.table("captures").select("tiger_id, embedding, status").not_.is_("embedding", "null").execute()
         rows = res.data
         
         if rows:
