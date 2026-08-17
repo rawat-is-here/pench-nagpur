@@ -75,7 +75,7 @@ export default function App() {
       }
 
       const overlapsRes = await axios.get(`${API_BASE}/territory_overlaps`);
-      setOverlaps(overlapsRes.data || []);
+      setOverlaps(overlapsRes.data.overlaps || []);
     } catch (error) {
       console.error("Error fetching territory details:", error);
     }
