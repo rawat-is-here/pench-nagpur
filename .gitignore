@@ -53,6 +53,7 @@ dist-ssr/
 *.local
 
 # Data, Datasets & Large Binary Weights
+data/display_dataset/
 data/quarantine/
 data/raw/
 data/cropped/

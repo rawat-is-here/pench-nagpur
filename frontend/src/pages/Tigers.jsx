@@ -12,239 +12,239 @@ import {
   Layers, 
   Fingerprint,
   CheckCircle2,
-  AlertTriangle
+  AlertTriangle,
+  Camera
 } from 'lucide-react';
-import { getAllTigers } from '../services/api';
+import { getAllTerritories, getAllTigers } from '../services/api';
 
-const defaultTigers = [
-  {
-    id: 'T-001',
-    name: 'Machli (Core Resident)',
-    gender: 'Female',
-    age: '6 Yrs',
-    status: 'Monitored',
-    territory: '18.4 sq km',
-    lastSeen: 'Station A01 · Totladoh Bank',
-    confidence: '98.4%',
-    sightingsCount: 42,
-    stripePattern: 'Asymmetric Chevron · Left Flank High Density',
-    notes: 'Dominant breeding matriarch in Pench Core Sector. High fidelity to reservoir bank routes.'
-  },
-  {
-    id: 'T-002',
-    name: 'Ustad (Border Roamer)',
-    gender: 'Male',
-    age: '4.5 Yrs',
-    status: 'Active',
-    territory: '22.8 sq km',
-    lastSeen: 'Station A06 · East River Buffer',
-    confidence: '94.2%',
-    stripePattern: 'Parallel Double Bar · Right Flank Torso Band',
-    notes: 'Dominant core male. Frequently patrols river border and overlaps with T-001 at Ghatpendari.'
-  },
-  {
-    id: 'T-104',
-    name: 'Sharmilee (Sub-adult Disperser)',
-    gender: 'Female',
-    age: '2.5 Yrs',
-    status: 'Deviating',
-    territory: '14.1 sq km',
-    lastSeen: 'Station A04 · Sillari Fringe',
-    confidence: '91.0%',
-    stripePattern: 'Branching Y-forks · Mid Flank Region',
-    notes: 'Under active deviation monitoring. Dispersing towards agricultural buffer boundary.'
-  }
+const TIGER_COLORS = [
+  '#c98222', '#2563eb', '#059669', '#d97706', '#7c3aed',
+  '#dc2626', '#0891b2', '#db2777', '#4f46e5', '#16a34a',
+  '#ea580c', '#9333ea', '#e11d48', '#0284c7', '#65a30d',
+  '#b45309', '#6366f1', '#10b981', '#f59e0b', '#8b5cf6',
+  '#ef4444', '#06b6d4', '#ec4899', '#3b82f6', '#22c55e',
+  '#f97316', '#a855f7', '#f43f5e', '#38bdf8', '#84cc16'
 ];
 
+const getTigerColor = (tigerId) => {
+  if (!tigerId) return '#c98222';
+  const num = parseInt(tigerId.replace(/\D/g, ''), 10) || 1;
+  return TIGER_COLORS[(num - 1) % TIGER_COLORS.length];
+};
+
 export default function Tigers() {
-  const [tigers, setTigers] = useState(defaultTigers);
+  const [territories, setTerritories] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedTiger, setSelectedTiger] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const fetchTigers = async () => {
+    async function loadData() {
+      setIsLoading(true);
       try {
-        const res = await getAllTigers();
-        if (res.data && res.data.length > 0) {
-          // Merge API data with rich details
-          const merged = res.data.map((t, idx) => {
-            const match = defaultTigers.find(dt => dt.id === t.id);
-            return match || {
-              id: t.id,
-              name: t.name || `Tiger ${t.id}`,
-              gender: 'Unknown',
-              age: 'Adult',
-              status: 'Monitored',
-              territory: '16.5 sq km',
-              lastSeen: 'Station A02 · Pench Grid',
-              confidence: '95.0%',
-              sightingsCount: 12,
-              stripePattern: 'ResNet-50 2048D Normalized Embedding',
-              notes: 'Enrolled via automated camera trap stripe triage.'
-            };
-          });
-          setTigers(merged);
-        }
+        const res = await getAllTerritories();
+        if (res.data) setTerritories(res.data);
       } catch (err) {
-        console.error('Error fetching tigers:', err);
+        console.error('Error fetching tiger territories:', err);
+      } finally {
+        setIsLoading(false);
       }
-    };
-    fetchTigers();
+    }
+    loadData();
   }, []);
 
-  const filtered = tigers.filter(
+  const filtered = territories.filter(
     (t) =>
-      t.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      t.name.toLowerCase().includes(searchTerm.toLowerCase())
+      t.tiger_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      t.tiger_alias.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      t.sector.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   return (
     <div className="space-y-6">
-      {/* PAGE HEADING */}
+      {/* HEADER */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <div className="text-xs font-bold text-emerald-800 tracking-wider uppercase">
-            Biometric Stripe Re-Identification Database
+          <div className="text-xs font-bold text-emerald-800 tracking-wider uppercase flex items-center gap-1.5">
+            <Fingerprint size={14} />
+            Fauna Intelligence & Biometric Archive
           </div>
           <h1 className="text-2xl font-extrabold text-forest-950 tracking-tight">
-            Enrolled Tiger Catalogue
+            Pench Resident Tiger Dossiers
           </h1>
           <p className="text-xs text-slate-600">
-            Automated ResNet-50 flank stripe embeddings & historical spatial records across Pench Reserve.
+            Catalogued individuals ({territories.length} Tigers), stripe biometrics, activity centroids, and territorial patrol radii.
           </p>
         </div>
 
-        {/* SEARCH BAR */}
+        {/* SEARCH & FILTERS */}
         <div className="flex items-center gap-3">
           <div className="relative">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               type="text"
-              placeholder="Search Tiger ID, name..."
+              placeholder="Search by ID, alias, or sector..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-9 pr-4 py-1.5 rounded-lg bg-surface-card border border-surface-border text-xs text-forest-950 focus:outline-none focus:border-forest-700 shadow-sm w-64"
+              className="bg-white border border-surface-border rounded-xl pl-9 pr-4 py-2 text-xs outline-none focus:border-forest-600 w-64 shadow-sm"
             />
           </div>
         </div>
       </div>
 
-      {/* TIGER CARDS GRID */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-        {filtered.map((tiger) => (
-          <div 
-            key={tiger.id} 
-            className="panel p-5 space-y-4 hover:shadow-hover transition-all cursor-pointer"
-            onClick={() => setSelectedTiger(tiger)}
-          >
-            <div className="flex justify-between items-start">
+      {/* 30 TIGERS CARD GRID */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+        {filtered.map((t) => {
+          const color = getTigerColor(t.tiger_id);
+          const firstImage = t.capture_points && t.capture_points.length > 0 ? t.capture_points[0].image_name : `${t.tiger_id}_1.jpg`;
+
+          return (
+            <div
+              key={t.tiger_id}
+              onClick={() => setSelectedTiger(t)}
+              className="panel overflow-hidden hover:shadow-hover transition-all cursor-pointer group flex flex-col justify-between border-t-4"
+              style={{ borderTopColor: color }}
+            >
               <div>
-                <span className="badge-tag badge-tiger mb-1.5 font-bold">
-                  {tiger.id}
+                {/* THUMBNAIL IMAGE */}
+                <div className="relative aspect-video bg-slate-200 overflow-hidden border-b border-surface-border">
+                  <img
+                    src={`http://127.0.0.1:8000/data/raw/${firstImage}`}
+                    alt={t.tiger_alias}
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                    onError={(e) => {
+                      e.target.src = 'https://images.unsplash.com/photo-1561731216-c3a4d99437d5?w=500&auto=format&fit=crop&q=60';
+                    }}
+                  />
+                  <div className="absolute top-2 left-2 flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-forest-950/80 backdrop-blur-sm text-white font-mono text-[10px] font-extrabold">
+                    <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: color }}></span>
+                    {t.tiger_id}
+                  </div>
+                  <div className="absolute top-2 right-2 px-2 py-0.5 rounded-full bg-emerald-500/90 text-white text-[10px] font-bold">
+                    {t.zone}
+                  </div>
+                </div>
+
+                {/* CONTENT */}
+                <div className="p-4 space-y-2.5">
+                  <div>
+                    <h3 className="font-extrabold text-forest-950 text-sm leading-tight group-hover:text-forest-700 transition-colors">
+                      {t.tiger_alias}
+                    </h3>
+                    <p className="text-[11px] text-slate-500 mt-1 flex items-center gap-1">
+                      <MapPin size={11} className="text-slate-400" />
+                      {t.sector}
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 bg-slate-50 p-2.5 rounded-lg border border-surface-border text-xs">
+                    <div>
+                      <span className="text-[10px] text-slate-400 uppercase font-bold block">MCP Core Area</span>
+                      <strong className="text-forest-950 font-mono">{t.core_area_sqkm} km²</strong>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-slate-400 uppercase font-bold block">Patrol Radius</span>
+                      <strong className="text-amber-700 font-mono">{(t.radius_meters / 1000).toFixed(2)} km</strong>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* FOOTER */}
+              <div className="px-4 py-2.5 bg-slate-50 border-t border-surface-border flex justify-between items-center text-[11px] text-slate-500">
+                <span className="flex items-center gap-1 font-mono">
+                  <Camera size={11} /> {t.capture_points ? t.capture_points.length : 3} Captures
                 </span>
-                <h3 className="text-forest-950 font-extrabold text-base">{tiger.name}</h3>
-                <span className="text-xs text-slate-500">{tiger.gender} · {tiger.age}</span>
-              </div>
-
-              <span className={`badge-tag ${
-                tiger.status === 'Monitored'
-                  ? 'badge-info'
-                  : tiger.status === 'Deviating'
-                  ? 'badge-critical'
-                  : 'badge-warning'
-              }`}>
-                {tiger.status}
-              </span>
-            </div>
-
-            {/* Biometric Stripe Pattern Summary Box */}
-            <div className="p-3 bg-surface-subtle rounded-lg border border-surface-border space-y-2">
-              <div className="flex items-center gap-2 text-xs font-bold text-forest-900">
-                <Fingerprint size={15} className="text-amber-600" />
-                <span>Stripe Signature:</span>
-              </div>
-              <p className="text-[11px] text-slate-600 line-clamp-2">
-                {tiger.stripePattern}
-              </p>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2 text-xs text-slate-600 pt-2 border-t border-surface-border">
-              <div>
-                <span className="text-[10px] text-slate-400 uppercase font-bold block">Estimated Range</span>
-                <span className="font-bold text-forest-950">{tiger.territory}</span>
-              </div>
-              <div>
-                <span className="text-[10px] text-slate-400 uppercase font-bold block">Re-ID Match Confidence</span>
-                <span className="font-bold text-emerald-700">{tiger.confidence}</span>
+                <span className="text-forest-800 font-bold group-hover:translate-x-0.5 transition-transform">
+                  View Dossier →
+                </span>
               </div>
             </div>
-
-            <div className="flex justify-between items-center text-xs text-slate-500 pt-2">
-              <span className="flex items-center gap-1">
-                <MapPin size={12} className="text-slate-400" />
-                {tiger.lastSeen.split('·')[0]}
-              </span>
-              <span className="text-forest-800 font-semibold flex items-center gap-1">
-                <Eye size={12} /> View Dossier
-              </span>
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
-      {/* TIGER DOSSIER MODAL */}
+      {/* DETAIL MODAL */}
       {selectedTiger && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-forest-950/40 backdrop-blur-sm">
-          <div className="panel max-w-lg w-full p-6 space-y-5 bg-white shadow-2xl relative animate-in fade-in zoom-in-95 duration-150">
-            <button 
-              onClick={() => setSelectedTiger(null)}
-              className="absolute right-4 top-4 text-slate-400 hover:text-forest-950"
-            >
-              <X size={18} />
-            </button>
-
-            <div>
-              <span className="badge-tag badge-tiger mb-1.5 font-mono text-xs">{selectedTiger.id}</span>
-              <h2 className="text-xl font-extrabold text-forest-950">{selectedTiger.name}</h2>
-              <p className="text-xs text-slate-500">{selectedTiger.gender} · {selectedTiger.age} · Monitored in Sector 7</p>
-            </div>
-
-            <div className="p-4 rounded-xl bg-forest-50 border border-forest-100 space-y-2">
-              <div className="flex items-center gap-2 text-xs font-bold text-forest-900">
-                <Fingerprint size={16} className="text-amber-600" />
-                <span>Biometric Flank Profile</span>
+        <div className="modal-backdrop" onClick={() => setSelectedTiger(null)}>
+          <div className="modal-card max-w-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <div className="modal-title">
+                <span className="font-mono text-base px-2 py-0.5 rounded bg-forest-100 text-forest-900 font-extrabold">
+                  {selectedTiger.tiger_id}
+                </span>
+                <span className="text-base font-extrabold text-forest-950">{selectedTiger.tiger_alias}</span>
               </div>
-              <p className="text-xs text-forest-800">
-                {selectedTiger.stripePattern}
-              </p>
-            </div>
-
-            <div className="grid grid-cols-3 gap-3 text-center">
-              <div className="p-3 bg-surface-subtle rounded-lg border border-surface-border">
-                <div className="text-[10px] uppercase font-bold text-slate-500">Core Range</div>
-                <div className="text-sm font-extrabold text-forest-950">{selectedTiger.territory}</div>
-              </div>
-              <div className="p-3 bg-surface-subtle rounded-lg border border-surface-border">
-                <div className="text-[10px] uppercase font-bold text-slate-500">Sightings</div>
-                <div className="text-sm font-extrabold text-forest-950">{selectedTiger.sightingsCount} Captures</div>
-              </div>
-              <div className="p-3 bg-surface-subtle rounded-lg border border-surface-border">
-                <div className="text-[10px] uppercase font-bold text-slate-500">Confidence</div>
-                <div className="text-sm font-extrabold text-emerald-800">{selectedTiger.confidence}</div>
-              </div>
-            </div>
-
-            <div className="space-y-1 text-xs">
-              <span className="font-bold text-forest-950">Field Notes & Behavioral Log:</span>
-              <p className="text-slate-600 leading-relaxed bg-surface-subtle p-3 rounded-lg border border-surface-border">
-                {selectedTiger.notes}
-              </p>
-            </div>
-
-            <div className="flex justify-end pt-2">
-              <button 
+              <button
                 onClick={() => setSelectedTiger(null)}
-                className="btn btn-primary text-xs px-5 py-2"
+                className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="modal-body space-y-4">
+              {/* PHOTO GALLERY */}
+              <div>
+                <div className="text-xs font-bold text-forest-950 mb-2 flex items-center gap-1">
+                  <Camera size={14} />
+                  Verified Flank & Sighting Captures ({selectedTiger.capture_points ? selectedTiger.capture_points.length : 3})
+                </div>
+                <div className="grid grid-cols-3 gap-3">
+                  {(selectedTiger.capture_points || []).map((cp, idx) => (
+                    <div key={idx} className="aspect-video bg-slate-100 rounded-lg overflow-hidden border border-surface-border relative group">
+                      <img
+                        src={`http://127.0.0.1:8000/data/raw/${cp.image_name || `${selectedTiger.tiger_id}_${idx+1}.jpg`}`}
+                        alt="Capture"
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                          e.target.src = 'https://images.unsplash.com/photo-1561731216-c3a4d99437d5?w=500&auto=format&fit=crop&q=60';
+                        }}
+                      />
+                      <div className="absolute bottom-0 inset-x-0 bg-forest-950/80 p-1 text-[10px] text-white font-mono truncate">
+                        {cp.station}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* TELEMETRY & TERRITORY DETAILS */}
+              <div className="grid grid-cols-2 gap-3 text-xs">
+                <div className="panel p-3 space-y-1">
+                  <span className="text-[10px] text-slate-500 uppercase font-bold">Activity Centroid</span>
+                  <div className="font-mono font-bold text-slate-900">
+                    {selectedTiger.centroid?.lat?.toFixed(5)}°N, {selectedTiger.centroid?.lon?.toFixed(5)}°E
+                  </div>
+                </div>
+                <div className="panel p-3 space-y-1">
+                  <span className="text-[10px] text-slate-500 uppercase font-bold">Centroid Patrol Radius</span>
+                  <div className="font-mono font-bold text-amber-700">
+                    {(selectedTiger.radius_meters / 1000).toFixed(2)} km ({selectedTiger.radius_meters}m)
+                  </div>
+                </div>
+                <div className="panel p-3 space-y-1">
+                  <span className="text-[10px] text-slate-500 uppercase font-bold">Minimum Convex Polygon (MCP)</span>
+                  <div className="font-mono font-bold text-emerald-800">
+                    {selectedTiger.core_area_sqkm} km²
+                  </div>
+                </div>
+                <div className="panel p-3 space-y-1">
+                  <span className="text-[10px] text-slate-500 uppercase font-bold">Sanctuary Sector & Zone</span>
+                  <div className="font-bold text-forest-950">
+                    {selectedTiger.sector} ({selectedTiger.zone})
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="modal-footer">
+              <div className="text-xs text-slate-500 font-mono">
+                Biometric Vector: 2048D ResNet-50 FAISS Embedded
+              </div>
+              <button
+                onClick={() => setSelectedTiger(null)}
+                className="px-4 py-1.5 bg-forest-900 text-white rounded-lg text-xs font-bold hover:bg-forest-800 cursor-pointer"
               >
                 Close Dossier
               </button>

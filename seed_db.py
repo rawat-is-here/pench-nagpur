@@ -1,80 +1,139 @@
-from src.db import enroll_tiger, add_capture, get_db
+import os
+import json
+import pandas as pd
+from src.db import enroll_tiger, add_capture, add_alert, get_db
 
 def seed():
-    print("Starting database seeding...")
+    print("==================================================")
+    print("[INFO] Seeding Pench Tiger Reserve Display Dataset (30 Tigers, 90 Captures)")
+    print("==================================================")
     db = get_db()
+    if not db:
+        print("❌ Supabase DB connection failed.")
+        return
+        
+    csv_path = "data/display_dataset/locations_90.csv"
+    json_path = "data/display_dataset/metadata.json"
     
-    # 1. Clean existing records (Optional, but good for fresh seed)
-    print("Clearing existing captures and alerts...")
+    if not os.path.exists(csv_path):
+        print(f"❌ Could not find {csv_path}")
+        return
+
+    # 1. Clean existing records
+    print("Clearing existing database records for fresh seed...")
     try:
         db.table("alerts").delete().neq("id", 0).execute()
         db.table("captures").delete().neq("id", 0).execute()
         db.table("tigers").delete().neq("id", "none").execute()
     except Exception as e:
-        print("Could not clean database (might be empty):", e)
+        print("Database cleanup note:", e)
 
-    # 2. Enroll Tigers
-    print("Enrolling tigers...")
-    enroll_tiger("T-001", "Machli (Core Resident)")
-    enroll_tiger("T-002", "Ustad (Border Roamer)")
-
-    # 3. Add capture history for T-001 (Core Resident)
-    # Centered around Lat: 21.65, Lon: 79.20 (Core Zone)
-    print("Seeding captures for T-001...")
-    t1_captures = [
-        {"lat": 21.650, "lon": 79.201, "station": "STATION_A01", "time": "2026-08-10T08:00:00Z"},
-        {"lat": 21.661, "lon": 79.215, "station": "STATION_A02", "time": "2026-08-11T12:30:00Z"},
-        {"lat": 21.642, "lon": 79.220, "station": "STATION_A03", "time": "2026-08-12T15:45:00Z"},
-        {"lat": 21.655, "lon": 79.190, "station": "STATION_A04", "time": "2026-08-13T03:15:00Z"},
-        {"lat": 21.648, "lon": 79.230, "station": "STATION_A05", "time": "2026-08-14T21:00:00Z"},
-    ]
-    for idx, cap in enumerate(t1_captures):
+    # 2. Read dataset
+    df = pd.read_csv(csv_path)
+    with open(json_path, "r", encoding="utf-8") as f:
+        meta_list = json.load(f)
+        
+    # Group unique tigers
+    tigers_grouped = df.groupby("tiger_id").first().reset_index()
+    
+    print(f"Enrolling {len(tigers_grouped)} unique resident tigers into Supabase...")
+    for _, row in tigers_grouped.iterrows():
+        t_id = row["tiger_id"]
+        alias = row["tiger_alias"]
+        enroll_tiger(t_id, alias)
+        
+    print(f"Seeding {len(df)} telemetry captures across Pench camera trap grid...")
+    for idx, row in df.iterrows():
         add_capture(
-            tiger_id="T-001",
-            image_path=f"t1_historical_{idx}.jpg",
-            station=cap["station"],
-            timestamp=cap["time"],
-            latitude=cap["lat"],
-            longitude=cap["lon"],
+            tiger_id=row["tiger_id"],
+            image_path=row["image_name"],
+            station=row["station_id"],
+            timestamp=row["timestamp"],
+            latitude=float(row["latitude"]),
+            longitude=float(row["longitude"]),
             status="processed",
-            confidence=0.95
+            confidence=0.96
         )
 
-    # 4. Add capture history for T-002 (Border Roamer)
-    # Centered around Lat: 21.66, Lon: 79.23 (Slightly East, overlaps with T-001)
-    print("Seeding captures for T-002...")
-    t2_captures = [
-        {"lat": 21.660, "lon": 79.218, "station": "STATION_A02", "time": "2026-08-11T09:15:00Z"}, # STATION_A02 is an overlap station!
-        {"lat": 21.675, "lon": 79.240, "station": "STATION_A06", "time": "2026-08-12T18:20:00Z"},
-        {"lat": 21.668, "lon": 79.225, "station": "STATION_A07", "time": "2026-08-13T11:40:00Z"},
-        {"lat": 21.658, "lon": 79.250, "station": "STATION_A08", "time": "2026-08-14T04:50:00Z"},
+    # 3. Add ambiguous sightings for Human-in-the-Loop demonstration
+    print("Seeding Human-in-the-Loop pending reviews...")
+    pending_items = [
+        {
+            "tiger_id": "T-001",
+            "image_path": "T-001_1.jpg",
+            "station": "STATION_TR02",
+            "timestamp": "2026-08-16T14:20:00Z",
+            "latitude": 21.654,
+            "longitude": 79.206,
+            "confidence": 0.73
+        },
+        {
+            "tiger_id": "T-007",
+            "image_path": "T-007_2.jpg",
+            "station": "STATION_KJ05",
+            "timestamp": "2026-08-16T18:45:00Z",
+            "latitude": 21.701,
+            "longitude": 79.265,
+            "confidence": 0.68
+        },
+        {
+            "tiger_id": "T-020",
+            "image_path": "T-020_3.jpg",
+            "station": "STATION_KM03",
+            "timestamp": "2026-08-17T02:10:00Z",
+            "latitude": 21.615,
+            "longitude": 79.162,
+            "confidence": 0.71
+        }
     ]
-    for idx, cap in enumerate(t2_captures):
+    for p in pending_items:
         add_capture(
-            tiger_id="T-002",
-            image_path=f"t2_historical_{idx}.jpg",
-            station=cap["station"],
-            timestamp=cap["time"],
-            latitude=cap["lat"],
-            longitude=cap["lon"],
-            status="processed",
-            confidence=0.93
+            tiger_id=p["tiger_id"],
+            image_path=p["image_path"],
+            station=p["station"],
+            timestamp=p["timestamp"],
+            latitude=p["latitude"],
+            longitude=p["longitude"],
+            status="pending_review",
+            confidence=p["confidence"]
         )
 
-    # 5. Add an Ambiguous Sighting for Human-in-the-Loop Demonstration
-    print("Seeding an ambiguous sighting for Human-in-the-Loop review queue...")
-    add_capture(
-        tiger_id="T-001",
-        image_path="000002.jpg",
-        station="STATION_A03",
-        timestamp="2026-08-16T14:20:00Z",
-        latitude=21.644,
-        longitude=79.222,
-        status="pending_review",
-        confidence=0.72
-    )
+    # 4. Add operational alerts
+    print("Seeding tactical reserve alerts...")
+    alerts = [
+        {
+            "tiger_id": "T-010",
+            "alert_type": "BUFFER_PROXIMITY",
+            "severity": "WARNING",
+            "message": "BUFFER ZONE PROXIMITY: Tiger T-010 (Bawanthadi Roamer) detected near agricultural fringes (Station STATION_KJ14).",
+            "evidence": {"station": "STATION_KJ14", "zone": "Buffer Zone", "sector": "Karmajhiri East Buffer (MP)"}
+        },
+        {
+            "tiger_id": "T-027",
+            "alert_type": "CORRIDOR_CROSSING",
+            "severity": "CRITICAL",
+            "message": "HIGHWAY CORRIDOR CROSSING: Tiger T-027 (Paoni Trail Sovereign) moving across NH-44 Paoni Underpass.",
+            "evidence": {"station": "STATION_SG08", "zone": "Corridor Zone", "sector": "Paoni Highway Corridor (MH)"}
+        },
+        {
+            "tiger_id": "T-002",
+            "alert_type": "RANGE_SHIFT",
+            "severity": "WARNING",
+            "message": "RANGE SHIFT DETECTED: Tiger T-002 centroid shifted 3.8 km towards Ghatpendari River confluence.",
+            "evidence": {"station": "STATION_TR06", "shift_km": 3.8, "sector": "Turia - Ghatpendari Overlap"}
+        }
+    ]
+    for a in alerts:
+        add_alert(
+            tiger_id=a["tiger_id"],
+            alert_type=a["alert_type"],
+            severity=a["severity"],
+            message=a["message"],
+            evidence=a["evidence"]
+        )
 
-    print("Seeding complete! Database initialized with resident tigers, history, and 1 pending review.")
+    print("[SUCCESS] Database seeding complete! 30 resident tigers, 93 captures, and 3 active alerts created.")
 
 if __name__ == "__main__":
     seed()
+

@@ -5,6 +5,8 @@ import {
   Marker,
   Popup,
   Polygon,
+  Circle,
+  CircleMarker,
   Rectangle
 } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -25,60 +27,89 @@ import {
   ArrowUpRight,
   Check,
   Radio,
-  FileCheck
+  FileCheck,
+  Eye,
+  Undo2,
+  X
 } from 'lucide-react';
 import L from 'leaflet';
 import { 
   getSystemStats, 
-  getTerritory, 
+  getAllTerritories,
   getTerritoryOverlaps, 
   getActiveAlerts, 
   resolveAlert, 
-  uploadCameraTrap 
+  uploadCameraTrap,
+  getCameraStations
 } from '../services/api';
 
-// Leaflet default icon fix
-delete L.Icon.Default.prototype._getIconUrl;
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
-  iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
-  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
-});
+// Distinct color palette for tigers
+const TIGER_COLORS = [
+  '#c98222', '#2563eb', '#059669', '#d97706', '#7c3aed',
+  '#dc2626', '#0891b2', '#db2777', '#4f46e5', '#16a34a',
+  '#ea580c', '#9333ea', '#e11d48', '#0284c7', '#65a30d',
+  '#b45309', '#6366f1', '#10b981', '#f59e0b', '#8b5cf6',
+  '#ef4444', '#06b6d4', '#ec4899', '#3b82f6', '#22c55e',
+  '#f97316', '#a855f7', '#f43f5e', '#38bdf8', '#84cc16'
+];
 
-// Custom Camera Node Icon
-const createStationIcon = (color = '#059669') => {
+const getTigerColor = (tigerId) => {
+  if (!tigerId) return '#c98222';
+  const num = parseInt(tigerId.replace(/\D/g, ''), 10) || 1;
+  return TIGER_COLORS[(num - 1) % TIGER_COLORS.length];
+};
+
+const createTigerCentroidIcon = (tigerId, color = '#c98222') => {
   return L.divIcon({
-    className: 'custom-station-icon',
-    html: `<div style="background-color: ${color}; width: 12px; height: 12px; border-radius: 50%; border: 2px solid white; box-shadow: 0 0 6px rgba(0,0,0,0.3);"></div>`,
-    iconSize: [12, 12],
-    iconAnchor: [6, 6]
+    className: 'custom-tiger-centroid-icon',
+    html: `
+      <div style="
+        background: ${color};
+        color: white;
+        padding: 3px 8px;
+        border-radius: 999px;
+        font-weight: 800;
+        font-size: 11px;
+        box-shadow: 0 3px 10px rgba(0,0,0,0.35);
+        border: 2px solid white;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        white-space: nowrap;
+      ">
+        <span style="width:6px; height:6px; border-radius:50%; background:white;"></span>
+        ${tigerId}
+      </div>
+    `,
+    iconSize: [64, 24],
+    iconAnchor: [32, 12]
   });
 };
 
-const STATIONS = [
-  { id: 'STATION_A01', name: 'Totladoh Core Bank', lat: 21.650, lon: 79.201, status: 'Active' },
-  { id: 'STATION_A02', name: 'Ghatpendari Corridor', lat: 21.661, lon: 79.215, status: 'Active' },
-  { id: 'STATION_A03', name: 'Karmajhiri Deep Forest', lat: 21.642, lon: 79.220, status: 'Active' },
-  { id: 'STATION_A04', name: 'Sillari Fringe Station', lat: 21.655, lon: 79.190, status: 'Active' },
-  { id: 'STATION_A05', name: 'Chhindwara Border Pass', lat: 21.648, lon: 79.230, status: 'Active' },
-  { id: 'STATION_A06', name: 'East River Buffer Node', lat: 21.675, lon: 79.240, status: 'Active' },
-  { id: 'STATION_A07', name: 'Kolitmara Crossing', lat: 21.668, lon: 79.225, status: 'Active' },
-  { id: 'STATION_A08', name: 'Mahadeo Trail Head', lat: 21.658, lon: 79.250, status: 'Active' }
-];
+const createStationIcon = (color = '#059669') => {
+  return L.divIcon({
+    className: 'custom-station-icon',
+    html: `<div style="background-color: ${color}; width: 10px; height: 10px; border-radius: 50%; border: 2px solid white; box-shadow: 0 0 5px rgba(0,0,0,0.3);"></div>`,
+    iconSize: [10, 10],
+    iconAnchor: [5, 5]
+  });
+};
 
 export default function Dashboard({ refreshTrigger }) {
   const [stats, setStats] = useState({
     active_cameras: 142,
-    identified_tigers: 2,
+    identified_tigers: 30,
     storage_saved_mb: 48.6,
     quarantined_images: 18,
     manual_hours_saved: 0.8
   });
 
-  const [t1Territory, setT1Territory] = useState(null);
-  const [t2Territory, setT2Territory] = useState(null);
+  const [territories, setTerritories] = useState([]);
+  const [cameraStations, setCameraStations] = useState([]);
   const [overlaps, setOverlaps] = useState([]);
   const [alerts, setAlerts] = useState([]);
+  const [selectedTigerId, setSelectedTigerId] = useState('ALL'); // 'ALL' or 'T-001', etc.
+  const [showRadius, setShowRadius] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadResult, setUploadResult] = useState(null);
   const [resolvingId, setResolvingId] = useState(null);
@@ -89,17 +120,13 @@ export default function Dashboard({ refreshTrigger }) {
       const statsRes = await getSystemStats();
       if (statsRes.data) setStats(statsRes.data);
 
-      // 2. T1 Territory (Machli)
-      const t1Res = await getTerritory('T-001');
-      if (t1Res.data && t1Res.data.status === 'calculated') {
-        setT1Territory(t1Res.data);
-      }
+      // 2. All Territories
+      const terrRes = await getAllTerritories();
+      if (terrRes.data) setTerritories(terrRes.data);
 
-      // 3. T2 Territory (Ustad)
-      const t2Res = await getTerritory('T-002');
-      if (t2Res.data && t2Res.data.status === 'calculated') {
-        setT2Territory(t2Res.data);
-      }
+      // 3. Camera Stations
+      const stationsRes = await getCameraStations();
+      if (stationsRes.data) setCameraStations(stationsRes.data);
 
       // 4. Overlaps
       const ovRes = await getTerritoryOverlaps();
@@ -158,11 +185,11 @@ export default function Dashboard({ refreshTrigger }) {
     }
   };
 
-  // Pench Core Zone Bounds for GIS visualization
-  const coreZoneBounds = [
-    [21.61, 79.19],
-    [21.71, 79.29]
-  ];
+  const filteredTerritories = selectedTigerId === 'ALL'
+    ? territories
+    : territories.filter(t => t.tiger_id === selectedTigerId);
+
+  const selectedTerritoryData = territories.find(t => t.tiger_id === selectedTigerId);
 
   return (
     <div className="space-y-6">
@@ -171,7 +198,7 @@ export default function Dashboard({ refreshTrigger }) {
         <div>
           <div className="flex items-center gap-2 text-xs font-bold text-emerald-800 tracking-wider uppercase">
             <Radio size={12} className="text-emerald-600 animate-pulse" />
-            Live Reserve Telemetry Feed
+            Live Pench Telemetry Feed
           </div>
           <h1 className="text-2xl font-extrabold text-forest-950 tracking-tight">
             Reserve Operations Command Center
@@ -184,7 +211,7 @@ export default function Dashboard({ refreshTrigger }) {
         <div className="flex items-center gap-3">
           <div className="px-3 py-1.5 rounded-lg bg-white border border-surface-border text-xs font-semibold text-forest-900 shadow-sm flex items-center gap-2">
             <Sparkles size={14} className="text-amber-500" />
-            <span>AI Models: <strong>MDV6 + ResNet50</strong></span>
+            <span>AI Pipeline: <strong>MDV6-e + ResNet50 Metric Learning</strong></span>
           </div>
         </div>
       </div>
@@ -197,7 +224,7 @@ export default function Dashboard({ refreshTrigger }) {
             <Activity size={14} className="text-amber-600" />
             Enrolled Individuals
           </div>
-          <div className="stat-value">{stats.identified_tigers || 2} <span className="text-sm font-normal text-slate-500">Tigers</span></div>
+          <div className="stat-value">{stats.identified_tigers || territories.length || 30} <span className="text-sm font-normal text-slate-500">Tigers</span></div>
           <div className="stat-meta flex items-center gap-1.5">
             <span className="text-emerald-700 font-bold flex items-center gap-0.5">
               <ArrowUpRight size={13} /> 100%
@@ -212,7 +239,7 @@ export default function Dashboard({ refreshTrigger }) {
             <Camera size={14} className="text-emerald-600" />
             Optical Sensor Grid
           </div>
-          <div className="stat-value">{stats.active_cameras || 142} <span className="text-sm font-normal text-slate-500">Nodes</span></div>
+          <div className="stat-value">{cameraStations.length || 90} <span className="text-sm font-normal text-slate-500">Nodes</span></div>
           <div className="stat-meta">
             <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span>
             <span>All stations transmitting</span>
@@ -225,9 +252,9 @@ export default function Dashboard({ refreshTrigger }) {
             <FileCheck size={14} className="text-sky-600" />
             Quarantine Storage Saved
           </div>
-          <div className="stat-value">{stats.storage_saved_mb || 0} <span className="text-sm font-normal text-slate-500">MB</span></div>
+          <div className="stat-value">{stats.storage_saved_mb || 48.6} <span className="text-sm font-normal text-slate-500">MB</span></div>
           <div className="stat-meta">
-            <span>{stats.quarantined_images || 0} blanks filtered ({stats.manual_hours_saved || 0.8}h saved)</span>
+            <span>{stats.quarantined_images || 18} blanks filtered ({stats.manual_hours_saved || 0.8}h saved)</span>
           </div>
         </div>
 
@@ -239,7 +266,7 @@ export default function Dashboard({ refreshTrigger }) {
           </div>
           <div className="stat-value text-rose-700">{alerts.length} <span className="text-sm font-normal text-slate-500">Pending</span></div>
           <div className="stat-meta">
-            <span className="text-amber-700 font-medium">Core shift & buffer warnings</span>
+            <span className="text-amber-700 font-medium">Buffer proximity & range shifts</span>
           </div>
         </div>
       </div>
@@ -250,43 +277,65 @@ export default function Dashboard({ refreshTrigger }) {
         {/* LEFT COLUMN (7 Cols): TACTICAL GIS MAP */}
         <div className="lg:col-span-7 space-y-6">
           <div className="panel">
-            <div className="panel-header">
+            <div className="panel-header flex flex-wrap justify-between items-center gap-3">
               <div className="panel-title">
                 <Compass size={17} className="text-emerald-700" />
-                <span>Pench Reserve Spatial Grid & Home Ranges</span>
+                <span>Geospatial Territories & Centroid Patrol Radii</span>
               </div>
-              <div className="flex items-center gap-2 text-xs">
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-50 border border-emerald-200 text-emerald-800 font-medium">
-                  <span className="w-2 h-2 rounded-full bg-emerald-600"></span>
-                  T-001 Range
-                </span>
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-sky-50 border border-sky-200 text-sky-800 font-medium">
-                  <span className="w-2 h-2 rounded-full bg-sky-600"></span>
-                  T-002 Range
-                </span>
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-amber-50 border border-amber-200 text-amber-800 font-medium">
-                  <span className="w-2 h-2 rounded-full bg-amber-500"></span>
-                  Territory Overlap
-                </span>
+
+              {/* TIGER SELECTOR DROPDOWN & RADIUS TOGGLE */}
+              <div className="flex items-center gap-3">
+                <label className="flex items-center gap-1.5 text-xs font-bold text-amber-900 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={showRadius}
+                    onChange={(e) => setShowRadius(e.target.checked)}
+                    className="accent-amber-600"
+                  />
+                  <span>🎯 Patrol Radii</span>
+                </label>
+
+                <select
+                  value={selectedTigerId}
+                  onChange={(e) => setSelectedTigerId(e.target.value)}
+                  className="bg-slate-50 border border-surface-border text-forest-950 rounded-lg px-2.5 py-1 text-xs font-bold outline-none cursor-pointer"
+                >
+                  <option value="ALL">🌐 All 30 Territories</option>
+                  {territories.map((t) => (
+                    <option key={t.tiger_id} value={t.tiger_id}>
+                      {t.tiger_id} — {t.tiger_alias}
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
 
             <div className="p-3">
-              <div style={{ height: '420px', width: '100%', borderRadius: '10px', overflow: 'hidden' }}>
+              <div style={{ height: '460px', width: '100%', borderRadius: '10px', overflow: 'hidden' }}>
                 <MapContainer
-                  center={[21.655, 79.215]}
-                  zoom={12}
+                  center={
+                    selectedTerritoryData && selectedTerritoryData.centroid
+                      ? [selectedTerritoryData.centroid.lat, selectedTerritoryData.centroid.lon]
+                      : [21.655, 79.215]
+                  }
+                  zoom={selectedTigerId === 'ALL' ? 11 : 13}
                   scrollWheelZoom={false}
                   style={{ height: '100%', width: '100%' }}
                 >
                   <TileLayer
-                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                    attribution='&copy; OpenStreetMap contributors | Pench Forest Dept'
                     url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                   />
 
                   {/* Pench Core Zone Outer Box */}
-                  <Rectangle
-                    bounds={coreZoneBounds}
+                  <Polygon
+                    positions={[
+                      [21.745, 79.180],
+                      [21.745, 79.310],
+                      [21.560, 79.310],
+                      [21.560, 79.130],
+                      [21.630, 79.130]
+                    ]}
                     pathOptions={{
                       color: '#059669',
                       weight: 1.5,
@@ -294,97 +343,116 @@ export default function Dashboard({ refreshTrigger }) {
                       fillOpacity: 0.04
                     }}
                   >
-                    <Popup><strong>Pench Core Zone Boundary</strong><br />Lat [21.61, 21.71], Lon [79.19, 79.29]</Popup>
-                  </Rectangle>
+                    <Popup><strong>Pench Core Sanctuary</strong></Popup>
+                  </Polygon>
 
-                  {/* Tiger 1 Territory (T-001 Machli) */}
-                  {t1Territory && t1Territory.polygon && t1Territory.polygon.length > 0 && (
-                    <Polygon
-                      positions={t1Territory.polygon}
-                      pathOptions={{
-                        color: '#059669',
-                        fillColor: '#10b981',
-                        fillOpacity: 0.22,
-                        weight: 2
-                      }}
-                    >
-                      <Popup>
-                        <div className="text-xs space-y-1">
-                          <strong className="text-emerald-900 block text-sm">Tiger T-001 (Machli)</strong>
-                          <div>Core Territory: <strong>{t1Territory.core_area_sqkm} sq km</strong></div>
-                          <div>Centroid: {t1Territory.centroid?.lat?.toFixed(3)}°N, {t1Territory.centroid?.lon?.toFixed(3)}°E</div>
-                        </div>
-                      </Popup>
-                    </Polygon>
-                  )}
+                  {/* RENDER TERRITORIES */}
+                  {filteredTerritories.map((t) => {
+                    const color = getTigerColor(t.tiger_id);
+                    const centroid = t.centroid;
+                    const radiusM = t.radius_meters || 1200;
 
-                  {/* Tiger 2 Territory (T-002 Ustad) */}
-                  {t2Territory && t2Territory.polygon && t2Territory.polygon.length > 0 && (
-                    <Polygon
-                      positions={t2Territory.polygon}
-                      pathOptions={{
-                        color: '#0284c7',
-                        fillColor: '#38bdf8',
-                        fillOpacity: 0.22,
-                        weight: 2
-                      }}
-                    >
-                      <Popup>
-                        <div className="text-xs space-y-1">
-                          <strong className="text-sky-900 block text-sm">Tiger T-002 (Ustad)</strong>
-                          <div>Core Territory: <strong>{t2Territory.core_area_sqkm} sq km</strong></div>
-                        </div>
-                      </Popup>
-                    </Polygon>
-                  )}
+                    return (
+                      <React.Fragment key={t.tiger_id}>
+                        {/* 1. MCP POLYGON */}
+                        {t.polygon && t.polygon.length >= 3 && (
+                          <Polygon
+                            positions={t.polygon}
+                            pathOptions={{
+                              color: color,
+                              fillColor: color,
+                              fillOpacity: selectedTigerId === t.tiger_id ? 0.32 : 0.16,
+                              weight: selectedTigerId === t.tiger_id ? 3 : 2
+                            }}
+                          >
+                            <Popup>
+                              <div className="p-1 space-y-1 text-xs">
+                                <strong className="text-sm block" style={{ color: color }}>
+                                  {t.tiger_id} — {t.tiger_alias}
+                                </strong>
+                                <div>Core Territory: <strong>{t.core_area_sqkm} sq km</strong></div>
+                                <div>Sector: {t.sector}</div>
+                              </div>
+                            </Popup>
+                          </Polygon>
+                        )}
 
-                  {/* Overlap Polygons */}
-                  {overlaps.map((ov, idx) => (
-                    ov.polygon && ov.polygon.length > 0 && (
-                      <Polygon
-                        key={idx}
-                        positions={ov.polygon}
-                        pathOptions={{
-                          color: '#d97706',
-                          fillColor: '#f59e0b',
-                          fillOpacity: 0.45,
-                          weight: 2,
-                          dashArray: '3, 3'
-                        }}
-                      >
-                        <Popup>
-                          <div className="text-xs space-y-1">
-                            <strong className="text-amber-900 block font-bold">Territorial Overlap Zone</strong>
-                            <div>Intersection: {ov.tiger_1} & {ov.tiger_2}</div>
-                            <div>Shared Area: <strong>{ov.overlap_area_sqkm} sq km</strong></div>
-                          </div>
-                        </Popup>
-                      </Polygon>
-                    )
-                  ))}
+                        {/* 2. CENTROID PATROL RADIUS CIRCLE */}
+                        {showRadius && centroid && (
+                          <Circle
+                            center={[centroid.lat, centroid.lon]}
+                            radius={radiusM}
+                            pathOptions={{
+                              color: color,
+                              fillColor: color,
+                              fillOpacity: selectedTigerId === t.tiger_id ? 0.14 : 0.06,
+                              weight: selectedTigerId === t.tiger_id ? 2.5 : 1.5,
+                              dashArray: '6, 6'
+                            }}
+                          >
+                            <Popup>
+                              <div className="p-1 space-y-1 text-xs">
+                                <strong className="text-amber-800 block text-sm">
+                                  🎯 {t.tiger_id} Centroid Patrol Buffer
+                                </strong>
+                                <div><strong>Radius:</strong> {(radiusM / 1000).toFixed(2)} km ({radiusM}m)</div>
+                                <div><strong>Centroid:</strong> {centroid.lat.toFixed(4)}°N, {centroid.lon.toFixed(4)}°E</div>
+                                <div><strong>Tiger:</strong> {t.tiger_alias}</div>
+                              </div>
+                            </Popup>
+                          </Circle>
+                        )}
 
-                  {/* Camera Trap Stations */}
-                  {STATIONS.map((st) => (
-                    <Marker
-                      key={st.id}
-                      position={[st.lat, st.lon]}
-                      icon={createStationIcon('#112c20')}
-                    >
-                      <Popup>
-                        <div className="text-xs space-y-1">
-                          <div className="font-bold text-forest-900">{st.id}</div>
-                          <div className="text-slate-600">{st.name}</div>
-                          <div className="text-slate-500 font-mono">{st.lat.toFixed(3)}°N, {st.lon.toFixed(3)}°E</div>
-                        </div>
-                      </Popup>
-                    </Marker>
-                  ))}
+                        {/* 3. CENTROID MARKER WITH TIGER ID BADGE */}
+                        {centroid && (
+                          <Marker
+                            position={[centroid.lat, centroid.lon]}
+                            icon={createTigerCentroidIcon(t.tiger_id, color)}
+                          >
+                            <Popup>
+                              <div className="p-1.5 space-y-1 text-xs min-w-[180px]">
+                                <div className="font-extrabold text-sm">{t.tiger_id} Centroid</div>
+                                <div className="text-slate-700 font-bold">{t.tiger_alias}</div>
+                                <div className="text-slate-600"><strong>GPS:</strong> {centroid.lat.toFixed(5)}°N, {centroid.lon.toFixed(5)}°E</div>
+                                <div className="text-slate-600"><strong>Patrol Radius:</strong> {(radiusM / 1000).toFixed(2)} km</div>
+                                <div className="text-slate-600"><strong>Core MCP:</strong> {t.core_area_sqkm} km²</div>
+                                <div className="text-slate-600"><strong>Sector:</strong> {t.sector}</div>
+                              </div>
+                            </Popup>
+                          </Marker>
+                        )}
+
+                        {/* 4. SIGHTING NODES */}
+                        {t.capture_points && t.capture_points.map((pt, pIdx) => (
+                          <CircleMarker
+                            key={`${t.tiger_id}-pt-${pIdx}`}
+                            center={[pt.lat, pt.lon]}
+                            radius={4}
+                            pathOptions={{
+                              color: 'white',
+                              fillColor: color,
+                              fillOpacity: 0.9,
+                              weight: 1.5
+                            }}
+                          >
+                            <Popup>
+                              <div className="p-1 text-xs">
+                                <strong>{t.tiger_id} Sighting #{pIdx + 1}</strong><br />
+                                Station: {pt.station}<br />
+                                GPS: {pt.lat.toFixed(4)}°N, {pt.lon.toFixed(4)}°E
+                              </div>
+                            </Popup>
+                          </CircleMarker>
+                        ))}
+                      </React.Fragment>
+                    );
+                  })}
                 </MapContainer>
               </div>
 
-              <div className="mt-3 flex justify-between items-center text-xs text-slate-500 px-1">
+              <div className="mt-3 flex flex-wrap justify-between items-center text-xs text-slate-500 px-1">
                 <span>Projection: <strong>UTM Zone 44N (EPSG:32644)</strong></span>
-                <span>Active Polygon Model: <strong>Minimum Convex Polygon (MCP)</strong></span>
+                <span>Active Model: <strong>Minimum Convex Polygon (MCP) + Centroid Radius</strong></span>
               </div>
             </div>
           </div>
@@ -403,12 +471,12 @@ export default function Dashboard({ refreshTrigger }) {
               <span className="badge-tag badge-tiger">MegaDetector V6</span>
             </div>
 
-            <div className="panel-body space-y-4">
-              <p className="text-xs text-slate-600 leading-relaxed px-[22px] pt-3">
+            <div className="panel-body space-y-4 p-4">
+              <p className="text-xs text-slate-600 leading-relaxed">
                 Upload a raw frame to test automated blank filtering, flank isolation, and stripe matching against the FAISS catalogue.
               </p>
 
-              <label className={`dropzone-container block cursor-pointer ${isUploading ? 'radar-scan-line opacity-75' : ''}`}>
+              <label className={`dropzone-container block cursor-pointer p-5 border-2 border-dashed border-slate-300 rounded-xl hover:border-forest-600 transition-all text-center bg-slate-50 ${isUploading ? 'opacity-75' : ''}`}>
                 <input
                   type="file"
                   accept="image/*"
@@ -417,7 +485,7 @@ export default function Dashboard({ refreshTrigger }) {
                   className="hidden"
                 />
                 <div className="flex flex-col items-center justify-center space-y-2">
-                  <div className="w-10 h-10 rounded-full bg-forest-100 flex items-center justify-center text-forest-800">
+                  <div className="w-10 h-10 rounded-full bg-forest-100 flex items-center justify-center text-forest-800 mx-auto">
                     <Camera size={20} />
                   </div>
                   <div className="text-xs font-bold text-forest-900">
@@ -448,22 +516,21 @@ export default function Dashboard({ refreshTrigger }) {
                         <div>Station: <strong className="font-mono">{uploadResult.station}</strong></div>
                         <div>Distance: <strong className="font-mono">{uploadResult.distance_score}</strong></div>
                         <div>Status: <span className="font-semibold uppercase">{uploadResult.match_status}</span></div>
-                        <div>Time: <span>{new Date(uploadResult.timestamp).toLocaleTimeString()}</span></div>
+                        <div>Action: <span>Territory Updated</span></div>
                       </div>
                     </div>
                   ) : uploadResult.status === 'quarantined' ? (
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2 font-bold text-amber-900">
-                        <AlertTriangle size={16} className="text-amber-700" />
-                        <span>Blank Image Quarantined</span>
+                    <div className="space-y-1 text-amber-950">
+                      <div className="font-bold flex items-center gap-1.5">
+                        <AlertTriangle size={15} className="text-amber-700" />
+                        <span>Safe Quarantine (Blank Frame Filtered)</span>
                       </div>
-                      <div className="text-[11px] text-slate-700">
-                        {uploadResult.message || 'No animal detected above confidence threshold. Frame safely moved to quarantine directory.'}
-                      </div>
+                      <div className="text-[11px]">{uploadResult.message}</div>
                     </div>
                   ) : (
-                    <div className="text-rose-800 font-medium">
-                      {uploadResult.message || 'Inference error during processing.'}
+                    <div className="space-y-1 text-rose-950">
+                      <div className="font-bold">Error Processing Frame</div>
+                      <div className="text-[11px]">{uploadResult.message}</div>
                     </div>
                   )}
                 </div>
@@ -471,80 +538,55 @@ export default function Dashboard({ refreshTrigger }) {
             </div>
           </div>
 
-          {/* ACTIVE SPATIAL & MOVEMENT ALERTS */}
+          {/* ACTIVE ALERTS LIST */}
           <div className="panel">
-            <div className="panel-header">
+            <div className="panel-header flex justify-between items-center">
               <div className="panel-title">
                 <ShieldAlert size={17} className="text-rose-600" />
                 <span>Active Threat & Deviation Alerts</span>
               </div>
-              <span className="text-xs font-bold text-slate-500">{alerts.length} Total</span>
+              <span className="text-xs font-bold text-rose-700 font-mono">{alerts.length} Active</span>
             </div>
 
-            <div className="panel-body max-h-[300px] overflow-y-auto space-y-2.5">
+            <div className="p-4 space-y-3 max-h-[260px] overflow-y-auto">
               {alerts.length === 0 ? (
-                <div className="text-center py-6 text-xs text-slate-500">
-                  <CheckCircle2 size={24} className="mx-auto text-emerald-600 mb-1" />
-                  No unresolved territory deviations or buffer breaches.
+                <div className="text-center py-6 text-slate-400 text-xs">
+                  <CheckCircle2 size={24} className="mx-auto text-emerald-500 mb-1" />
+                  No active spatial alerts. All resident home ranges stable.
                 </div>
               ) : (
-                alerts.map((alert) => {
-                  const isCritical = alert.severity === 'CRITICAL';
-                  const isWarning = alert.severity === 'WARNING';
-                  return (
-                    <div
-                      key={alert.id}
-                      className={`alert-item ${
-                        isCritical ? 'severity-critical' : isWarning ? 'severity-warning' : 'severity-info'
-                      }`}
-                    >
-                      <div className="flex justify-between items-start gap-2">
-                        <div className="flex items-center gap-2">
-                          <span className={`badge-tag ${
-                            isCritical ? 'badge-critical' : isWarning ? 'badge-warning' : 'badge-info'
-                          }`}>
-                            {alert.alert_type}
-                          </span>
-                          <span className="badge-tag badge-tiger">
-                            {alert.tiger_id}
-                          </span>
-                        </div>
-                        <button
-                          onClick={() => handleResolveAlert(alert.id)}
-                          disabled={resolvingId === alert.id}
-                          className="btn btn-secondary py-0.5 px-2 text-[11px] h-6 flex items-center gap-1"
-                        >
-                          <Check size={11} />
-                          <span>Resolve</span>
-                        </button>
+                alerts.map((al) => (
+                  <div
+                    key={al.id}
+                    className={`p-3 rounded-xl border text-xs space-y-2 ${
+                      al.severity === 'CRITICAL'
+                        ? 'bg-rose-50/70 border-rose-200 text-rose-950'
+                        : 'bg-amber-50/70 border-amber-200 text-amber-950'
+                    }`}
+                  >
+                    <div className="flex justify-between items-start">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono font-bold px-1.5 py-0.5 rounded bg-white border text-[10px]">
+                          {al.tiger_id}
+                        </span>
+                        <span className="font-bold">{al.alert_type}</span>
                       </div>
-
-                      <div className="text-xs font-semibold text-slate-900 mt-1.5 leading-snug">
-                        {alert.message}
-                      </div>
-
-                      {alert.evidence && (
-                        <div className="mt-1 text-[11px] text-slate-600 flex flex-wrap gap-x-3 gap-y-1">
-                          {alert.evidence.distance_km && (
-                            <span>Shift: <strong>{alert.evidence.distance_km} km</strong></span>
-                          )}
-                          {alert.evidence.station && (
-                            <span>Station: <strong className="font-mono">{alert.evidence.station}</strong></span>
-                          )}
-                          {alert.evidence.from_station && (
-                            <span>Route: <strong className="font-mono">{alert.evidence.from_station} → {alert.evidence.to_station}</strong></span>
-                          )}
-                        </div>
-                      )}
+                      <button
+                        onClick={() => handleResolveAlert(al.id)}
+                        disabled={resolvingId === al.id}
+                        className="text-[11px] bg-white border px-2 py-0.5 rounded-md font-bold text-slate-700 hover:bg-slate-100 cursor-pointer"
+                      >
+                        {resolvingId === al.id ? 'Resolving...' : 'Acknowledge'}
+                      </button>
                     </div>
-                  );
-                })
+                    <p className="text-[11.5px] leading-relaxed text-slate-700">{al.message}</p>
+                  </div>
+                ))
               )}
             </div>
           </div>
 
         </div>
-
       </div>
     </div>
   );

@@ -10,17 +10,28 @@ const api = axios.create({
 // System Stats
 export const getSystemStats = () => api.get('/system_stats');
 
-// Territories & Spatial
+// Territories & Spatial Intelligence
 export const getTerritory = (tigerId = 'T-001') => api.get(`/territory/${tigerId}`);
+export const getAllTerritories = () => api.get('/all_territories');
 export const getTerritoryOverlaps = () => api.get('/territory_overlaps');
+export const getCameraStations = () => api.get('/camera_stations');
+export const getCaptures = () => api.get('/captures');
 
-// Alerts (handling both route variations)
+// Alerts
 export const getActiveAlerts = () => api.get('/alerts');
 export const resolveAlert = (alertId) => api.post(`/resolve_alert/${alertId}`);
 
 // Tigers
 export const getAllTigers = () => api.get('/tigers');
 export const getTigerProfile = (tigerId) => api.get(`/tigers/${tigerId}`);
+
+// Human-in-the-Loop Reviews
+export const getPendingReviews = () => api.get('/pending_reviews');
+export const resolveReview = (data) => api.post('/resolve_review', data);
+
+// Safe Quarantine Recovery
+export const getQuarantinedImages = () => api.get('/quarantined_images');
+export const restoreQuarantine = (filename) => api.post(`/restore_quarantine/${filename}`);
 
 // Image Upload & Ingestion
 export const uploadCameraTrap = (formData) =>
