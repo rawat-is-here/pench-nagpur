@@ -28,20 +28,12 @@ import {
 } from 'lucide-react';
 
 import L from 'leaflet';
-<<<<<<< HEAD
-import icon from 'leaflet/dist/images/marker-icon.png';
-import iconShadow from 'leaflet/dist/images/marker-shadow.png';
-
-let DefaultIcon = L.icon({ iconUrl: icon, shadowUrl: iconShadow, iconSize: [25, 41], iconAnchor: [12, 41] });
-L.Marker.prototype.options.icon = DefaultIcon;
-=======
 delete L.Icon.Default.prototype._getIconUrl;
 L.Icon.Default.mergeOptions({
   iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
   iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
   shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
 });
->>>>>>> 75b28d8c2daabe05bb1dc47a9fce36cf939610b6
 
 export default function App() {
   const [territory, setTerritory] = useState(null);
@@ -54,18 +46,38 @@ export default function App() {
   });
   const [uploadStatus, setUploadStatus] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [tigers, setTigers] = useState([]);
+  const [selectedTiger, setSelectedTiger] = useState("T-001");
+  const [overlaps, setOverlaps] = useState([]);
   const API_BASE = "http://127.0.0.1:8000";
 
   // Fetch initial dynamic data on load
   const fetchDashboardData = async () => {
     try {
-      const terrRes = await axios.get(`${API_BASE}/territory/T-001`);
-      if (terrRes.data.status === "calculated") setTerritory(terrRes.data);
-
       const statsRes = await axios.get(`${API_BASE}/system_stats`);
       setStats(statsRes.data);
+
+      const tigersRes = await axios.get(`${API_BASE}/tigers`);
+      setTigers(tigersRes.data);
     } catch (error) {
       console.error("Error fetching data:", error);
+    }
+  };
+
+  const fetchTerritoryData = async (tigerId) => {
+    if (!tigerId) return;
+    try {
+      const terrRes = await axios.get(`${API_BASE}/territory/${tigerId}`);
+      if (terrRes.data.status === "calculated") {
+        setTerritory(terrRes.data);
+      } else {
+        setTerritory(null);
+      }
+
+      const overlapsRes = await axios.get(`${API_BASE}/territory_overlaps`);
+      setOverlaps(overlapsRes.data || []);
+    } catch (error) {
+      console.error("Error fetching territory details:", error);
     }
   };
 
@@ -73,15 +85,21 @@ export default function App() {
     fetchDashboardData();
     // Start with a clean, dynamic system alert
     setAlerts([{
-  id: Date.now(),
-  severity: "NORMAL",
-  alert_type: "SYSTEM",
-  tiger_id: "NETWORK",
-  message: "Command Center online. AI Models loaded into memory.",
-  timestamp: new Date().toISOString(),
-  evidence: {}
-}]);
+      id: Date.now(),
+      severity: "NORMAL",
+      alert_type: "SYSTEM",
+      tiger_id: "NETWORK",
+      message: "Command Center online. AI Models loaded into memory.",
+      timestamp: new Date().toISOString(),
+      evidence: {}
+    }]);
   }, []);
+
+  useEffect(() => {
+    if (selectedTiger) {
+      fetchTerritoryData(selectedTiger);
+    }
+  }, [selectedTiger]);
 
   const handleFileUpload = async (event) => {
     const file = event.target.files[0];
@@ -187,106 +205,7 @@ export default function App() {
 
         </div>
 
-<<<<<<< HEAD
         <div className="sidebar-section">
-=======
-        {/* Primary Dashboard Sections */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          
-          {/* Map Column (2/3 width) */}
-          <div className="lg:col-span-2 space-y-6">
-            
-            {/* Live Territory Map Card */}
-            <div className="bg-slate-900 rounded-xl border border-slate-850 overflow-hidden flex flex-col h-[580px]">
-              <div className="p-4 bg-slate-900/90 border-b border-slate-850 flex flex-wrap justify-between items-center gap-4">
-                <div className="flex items-center gap-2">
-                  <Compass className="text-emerald-500" size={18} />
-                  <h2 className="font-bold text-white text-md">Spatial Analysis & Home Ranges</h2>
-                </div>
-                
-                {/* Tiger Selector Dropdown */}
-                <div className="flex items-center gap-2">
-                  <label className="text-xs text-slate-400">Tiger Focus:</label>
-                  <select 
-                    value={selectedTiger}
-                    onChange={(e) => setSelectedTiger(e.target.value)}
-                    className="bg-slate-800 border border-slate-700 text-xs text-white rounded px-3 py-1.5 focus:outline-none focus:border-emerald-500"
-                  >
-                    {tigers.map((t) => (
-                      <option key={t.id} value={t.id}>{t.id} ({t.name || "Unnamed"})</option>
-                    ))}
-                    {tigers.length === 0 && <option value="">No tigers enrolled</option>}
-                  </select>
-                </div>
-              </div>
-              
-              <div className="flex-grow bg-slate-950 relative z-0">
-                <MapContainer 
-                  center={[21.65, 79.25]} 
-                  zoom={11} 
-                  minZoom={10} 
-                  maxBounds={[[21.15, 78.75], [22.15, 79.75]]}
-                  style={{ height: '100%', width: '100%' }}
-                >
-                  <TileLayer
-                    url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-                    attribution='&copy; <a href="https://carto.com/">Carto</a>'
-                  />
-                  
-                  {/* Pench Reserve Zones */}
-                  <Polygon 
-                    positions={[[21.71, 79.19], [21.71, 79.29], [21.61, 79.29], [21.61, 79.19]]} 
-                    pathOptions={{ color: '#059669', fillColor: '#059669', fillOpacity: 0.08, weight: 2 }}
-                  >
-                    <Popup>
-                      <strong className="text-emerald-400">Pench Core Forest Zone</strong><br/>
-                      Strict wildlife protection core zone.
-                    </Popup>
-                  </Polygon>
-
-                  <Polygon 
-                    positions={[[21.75, 79.15], [21.75, 79.35], [21.55, 79.35], [21.55, 79.15]]} 
-                    pathOptions={{ color: '#d97706', fillColor: '#d97706', fillOpacity: 0.03, weight: 1.5, dashArray: '5, 5' }}
-                  >
-                    <Popup>
-                      <strong className="text-amber-500">Pench Buffer Zone</strong><br/>
-                      Co-existence forest area bordering human settlements.
-                    </Popup>
-                  </Polygon>
-
-                  <Polygon 
-                    positions={[[21.55, 79.15], [21.55, 79.35], [21.50, 79.35], [21.50, 79.15]]} 
-                    pathOptions={{ color: '#dc2626', fillColor: '#dc2626', fillOpacity: 0.06, weight: 1, dashArray: '3, 3' }}
-                  >
-                    <Popup>
-                      <strong className="text-red-500">⚠️ Southern Village Border</strong><br/>
-                      High conflict risk settlement boundaries (Lat &lt; 21.57).
-                    </Popup>
-                  </Polygon>
-
-                  <Polygon 
-                    positions={[[21.75, 79.33], [21.75, 79.38], [21.55, 79.38], [21.55, 79.33]]} 
-                    pathOptions={{ color: '#dc2626', fillColor: '#dc2626', fillOpacity: 0.06, weight: 1, dashArray: '3, 3' }}
-                  >
-                    <Popup>
-                      <strong className="text-red-500">⚠️ Eastern Village Border</strong><br/>
-                      High conflict risk settlement boundaries (Lon &gt; 79.33).
-                    </Popup>
-                  </Polygon>
-                  
-                  {/* Home range boundary polygon */}
-                  {territory && territory.polygon && territory.polygon.length > 0 && (
-                    <Polygon 
-                      positions={territory.polygon} 
-                      pathOptions={{ color: '#10b981', fillColor: '#10b981', fillOpacity: 0.15, weight: 3 }} 
-                    >
-                      <Popup>
-                        <strong className="text-emerald-500">Tiger {territory.tiger_id} Range</strong><br/>
-                        Estimated Area: {territory.core_area_sqkm} sq km
-                      </Popup>
-                    </Polygon>
-                  )}
->>>>>>> 75b28d8c2daabe05bb1dc47a9fce36cf939610b6
 
           <div className="sidebar-section-title">
             Monitoring
@@ -596,9 +515,16 @@ export default function App() {
 
                   <div>
 
-                    <div className="select-control">
-                      Tiger T-001 · Pench Reserve
-                    </div>
+                    <select 
+                      value={selectedTiger}
+                      onChange={(e) => setSelectedTiger(e.target.value)}
+                      className="select-control"
+                    >
+                      {tigers.map((t) => (
+                        <option key={t.id} value={t.id}>{t.id} ({t.name || "Unnamed"})</option>
+                      ))}
+                      {tigers.length === 0 && <option value="">No tigers enrolled</option>}
+                    </select>
 
                   </div>
 
@@ -610,49 +536,115 @@ export default function App() {
                 <div className="map-container">
 
                   <MapContainer
-                    center={[21.655, 79.215]}
-                    zoom={13}
+                    center={[21.65, 79.25]}
+                    zoom={11}
+                    minZoom={10}
+                    maxBounds={[[21.15, 78.75], [22.15, 79.75]]}
                     style={{
                       height: "100%",
                       width: "100%"
                     }}
                   >
-
                     <TileLayer
-                      url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                      attribution='&copy; OpenStreetMap contributors'
+                      url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+                      attribution='&copy; <a href="https://carto.com/">Carto</a>'
                     />
 
-                    {territory &&
-                      territory.centroid && (
+                    {/* Pench Reserve Zones */}
+                    <Polygon 
+                      positions={[[21.71, 79.19], [21.71, 79.29], [21.61, 79.29], [21.61, 79.19]]} 
+                      pathOptions={{ color: '#059669', fillColor: '#059669', fillOpacity: 0.08, weight: 2 }}
+                    >
+                      <Popup>
+                        <strong className="text-emerald-400">Pench Core Forest Zone</strong><br/>
+                        Strict wildlife protection core zone.
+                      </Popup>
+                    </Polygon>
 
-                        <Marker
-                          position={[
-                            territory.centroid.lat,
-                            territory.centroid.lon
-                          ]}
-                        >
+                    <Polygon 
+                      positions={[[21.75, 79.15], [21.75, 79.35], [21.55, 79.35], [21.55, 79.15]]} 
+                      pathOptions={{ color: '#d97706', fillColor: '#d97706', fillOpacity: 0.03, weight: 1.5, dashArray: '5, 5' }}
+                    >
+                      <Popup>
+                        <strong className="text-amber-500">Pench Buffer Zone</strong><br/>
+                        Co-existence forest area bordering human settlements.
+                      </Popup>
+                    </Polygon>
 
-                          <Popup>
+                    <Polygon 
+                      positions={[[21.55, 79.15], [21.55, 79.35], [21.50, 79.35], [21.50, 79.15]]} 
+                      pathOptions={{ color: '#dc2626', fillColor: '#dc2626', fillOpacity: 0.06, weight: 1, dashArray: '3, 3' }}
+                    >
+                      <Popup>
+                        <strong className="text-red-500">⚠️ Southern Village Border</strong><br/>
+                        High conflict risk settlement boundaries (Lat &lt; 21.57).
+                      </Popup>
+                    </Polygon>
 
-                            <strong>
-                              Tiger {territory.tiger_id} Core
-                            </strong>
+                    <Polygon 
+                      positions={[[21.75, 79.33], [21.75, 79.38], [21.55, 79.38], [21.55, 79.33]]} 
+                      pathOptions={{ color: '#dc2626', fillColor: '#dc2626', fillOpacity: 0.06, weight: 1, dashArray: '3, 3' }}
+                    >
+                      <Popup>
+                        <strong className="text-red-500">⚠️ Eastern Village Border</strong><br/>
+                        High conflict risk settlement boundaries (Lon &gt; 79.33).
+                      </Popup>
+                    </Polygon>
 
-                            <br />
+                    {/* Active Tiger Range Polygon */}
+                    {territory && territory.polygon && territory.polygon.length > 0 && (
+                      <Polygon 
+                        positions={territory.polygon} 
+                        pathOptions={{ color: '#10b981', fillColor: '#10b981', fillOpacity: 0.15, weight: 3 }} 
+                      >
+                        <Popup>
+                          <strong className="text-emerald-500">Tiger {territory.tiger_id} Range</strong><br/>
+                          Estimated Area: {territory.core_area_sqkm} sq km
+                        </Popup>
+                      </Polygon>
+                    )}
 
-                            Territory Area:
-                            {" "}
-                            {territory.core_area_sqkm}
-                            {" "}
-                            sq km
+                    {/* Centroid marker */}
+                    {territory && territory.centroid && (
+                      <Marker position={[territory.centroid.lat, territory.centroid.lon]}>
+                        <Popup>
+                          <strong>Tiger {territory.tiger_id} Centroid</strong><br/>
+                          Lat: {territory.centroid.lat.toFixed(4)}<br/>
+                          Lon: {territory.centroid.lon.toFixed(4)}
+                        </Popup>
+                      </Marker>
+                    )}
 
-                          </Popup>
+                    {/* Capture points */}
+                    {territory && territory.capture_points && territory.capture_points.map((pt, idx) => (
+                      <CircleMarker 
+                        key={`pt-${idx}`} 
+                        center={[pt.lat, pt.lon]} 
+                        radius={6} 
+                        pathOptions={{ color: '#f59e0b', fillColor: '#f59e0b', fillOpacity: 0.8, weight: 1 }}
+                      >
+                        <Popup>
+                          <strong>Capture Event:</strong> {territory.tiger_id}<br/>
+                          <strong>Station:</strong> {pt.station}<br/>
+                          <strong>Time:</strong> {new Date(pt.timestamp).toLocaleString()}
+                        </Popup>
+                      </CircleMarker>
+                    ))}
 
-                        </Marker>
-
-                      )}
-
+                    {/* Overlaps polygons */}
+                    {overlaps.map((ov, idx) => (
+                      <Polygon 
+                        key={`overlap-${idx}`}
+                        positions={ov.polygon}
+                        pathOptions={{ color: '#ef4444', fillColor: '#ef4444', fillOpacity: 0.25, weight: 2, dashArray: '5, 5' }}
+                      >
+                        <Popup>
+                          <strong className="text-red-500">⚠️ Territory Overlap Zone</strong><br/>
+                          Tigers: {ov.tiger_1} & {ov.tiger_2}<br/>
+                          Overlap Area: {ov.overlap_area_sqkm} sq km
+                        </Popup>
+                      </Polygon>
+                    ))}
                   </MapContainer>
 
                 </div>
