@@ -121,8 +121,7 @@ def preprocess_stripes(flank_image):
 
 def extract_features(image_path, bbox=None):
     """
-    Isolates the flank, preprocesses stripe patterns, 
-    and extracts a normalized 2048-dimensional ResNet-50 embedding.
+    Isolates the flank and extracts a normalized 2048-dimensional ResNet-50 embedding.
     """
     image = Image.open(image_path).convert('RGB')
     filename = os.path.basename(image_path)
@@ -143,10 +142,7 @@ def extract_features(image_path, bbox=None):
     else:
         flank = image
         
-    # Task 2: Stripe Extraction Enhancement
-    preprocessed_flank = preprocess_stripes(flank)
-    
-    tensor = transform(preprocessed_flank).unsqueeze(0).to(device)
+    tensor = transform(flank).unsqueeze(0).to(device)
     
     with torch.no_grad():
         features = model(tensor)
@@ -159,7 +155,7 @@ def extract_features(image_path, bbox=None):
         vector = vector / norm
     return vector
 
-def match_tiger(file_path, bbox=None, auto_match_threshold=0.20, enroll_threshold=0.40):
+def match_tiger(file_path, bbox=None, auto_match_threshold=0.20, enroll_threshold=0.45):
     """
     Compares image to database. 
     Returns: (tiger_id, distance_score, status, message, embedding_list)
@@ -235,7 +231,7 @@ def sync_faiss_with_database():
         from src.db import get_db
         db = get_db()
         # Fetch all processed captures that have non-null embeddings
-        res = db.table("captures").select("tiger_id, embedding, status").neq("embedding", "null").execute()
+        res = db.table("captures").select("tiger_id, embedding, status").not_.is_("embedding", "null").execute()
         rows = res.data
         
         if rows:
