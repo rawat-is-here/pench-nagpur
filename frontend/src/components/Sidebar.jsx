@@ -11,7 +11,10 @@ import {
   RefreshCw,
   Eye,
   Shield,
-  Radio
+  Radio,
+  FolderSync,
+  ShieldAlert,
+  UserCheck
 } from 'lucide-react';
 
 export default function Sidebar({ onRefresh, isRefreshing }) {
@@ -73,6 +76,18 @@ export default function Sidebar({ onRefresh, isRefreshing }) {
             <Camera size={16} />
             <span>Camera Trap Nodes</span>
             <span className="nav-counter">142</span>
+          </NavLink>
+          <NavLink to="/add-dataset" className={getNavClass}>
+            <FolderSync size={16} />
+            <span>Add new dataset</span>
+          </NavLink>
+          <NavLink to="/quarantine" className={getNavClass}>
+            <ShieldAlert size={16} />
+            <span>Quarantined data</span>
+          </NavLink>
+          <NavLink to="/manual-review" className={getNavClass}>
+            <UserCheck size={16} />
+            <span>Needs Manual Review</span>
           </NavLink>
           <NavLink to="/analytics" className={getNavClass}>
             <BarChart3 size={16} />

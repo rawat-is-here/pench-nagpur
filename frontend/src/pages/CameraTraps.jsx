@@ -31,8 +31,12 @@ const defaultCameras = [
   { id: 'CAM-PENCH-45', zone: 'Buffer North · Khawasa Route', status: 'Online', battery: 65, lastCapture: '1 hour ago', captures: 1120, signal: 'Strong', lat: 21.675, lon: 79.240 },
 ];
 
-export default function CameraTraps() {
-  const [activeTab, setActiveTab] = useState('batch'); // default to bulk ingest
+export default function CameraTraps({ defaultTab = 'batch' }) {
+  const [activeTab, setActiveTab] = useState(defaultTab);
+
+  useEffect(() => {
+    setActiveTab(defaultTab);
+  }, [defaultTab]);
   const [cameras, setCameras] = useState(defaultCameras);
   const [filterStatus, setFilterStatus] = useState('ALL');
   const [selectedStation, setSelectedStation] = useState('CAM-PENCH-01');

@@ -9,6 +9,8 @@ import Sightings from './pages/Sightings';
 import CameraTraps from './pages/CameraTraps';
 import Analytics from './pages/Analytics';
 import Reports from './pages/Reports';
+import QuarantinedData from './pages/QuarantinedData';
+import ManualReview from './pages/ManualReview';
 
 export default function App() {
   const [refreshTrigger, setRefreshTrigger] = useState(0);
@@ -34,6 +36,9 @@ export default function App() {
           <Route path="territories" element={<Territories />} />
           <Route path="sightings" element={<Sightings />} />
           <Route path="camera-traps" element={<CameraTraps />} />
+          <Route path="add-dataset" element={<CameraTraps defaultTab="batch" />} />
+          <Route path="quarantine" element={<QuarantinedData />} />
+          <Route path="manual-review" element={<ManualReview />} />
           <Route path="analytics" element={<Analytics />} />
           <Route path="reports" element={<Reports />} />
         </Route>
