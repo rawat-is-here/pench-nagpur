@@ -242,10 +242,10 @@ export default function ManualReview() {
                         >
                           <option value="">-- Choose Resident Tiger --</option>
                           {tigers
-                            .filter(t => t.tiger_id !== rev.candidate_tiger_id)
+                            .filter(t => t.id !== rev.candidate_tiger_id)
                             .map(t => (
-                              <option key={t.tiger_id} value={t.tiger_id}>
-                                {t.tiger_id} ({t.tiger_alias})
+                              <option key={t.id} value={t.id}>
+                                {t.id} ({t.name})
                               </option>
                             ))}
                         </select>
