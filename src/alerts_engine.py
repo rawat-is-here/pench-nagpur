@@ -84,19 +84,7 @@ def run_alerts_check(tiger_id, lat, lon, station, timestamp):
             except Exception as e:
                 print(f"Error adding range shift alert: {e}")
 
-    # 2. Check for first capture at previously unused station
-    historical_stations = {c["station"] for c in history if c.get("station")}
-    if station not in historical_stations and station != "GPS_PING":
-        msg = f"NEW STATION DETECTED: Tiger {tiger_id} captured at station {station} for the first time."
-        evidence = {
-            "station": station,
-            "historical_stations": list(historical_stations),
-            "current_location": {"lat": lat, "lon": lon}
-        }
-        try:
-            add_alert(tiger_id, "NEW_STATION", "INFO", msg, evidence)
-        except Exception as e:
-            print(f"Error adding new station alert: {e}")
+
 
     # 3. Check for movement into/towards Buffer or Village-adjacent stations
     prev_capture = history[0]

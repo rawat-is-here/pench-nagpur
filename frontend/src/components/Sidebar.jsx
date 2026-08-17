@@ -10,7 +10,6 @@ import {
   FileSpreadsheet,
   RefreshCw,
   Eye,
-  Shield,
   Radio,
   FolderSync,
   ShieldAlert,
@@ -31,7 +30,7 @@ export default function Sidebar({ onRefresh, isRefreshing }) {
         </div>
         <div className="flex items-center gap-3">
           <div className="brand-mark">
-            <Shield size={22} />
+            <img src="/favicon.svg" alt="TerraStripe Logo" className="w-6 h-6 object-contain" />
           </div>
           <div>
             <div className="brand-title">TERRASTRIPE</div>
