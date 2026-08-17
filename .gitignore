@@ -62,7 +62,6 @@ data/datasets/
 data/*.json
 *.bin
 *.pt
-*.pth
 *.onnx
 *.pkl
 *.h5

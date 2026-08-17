@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, File
+from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -20,7 +20,7 @@ from src.alerts_engine import check_deviation, run_alerts_check, check_prolonged
 from src.db import (
     get_db, get_all_tigers, enroll_tiger, add_capture, add_alert, 
     get_active_alerts, get_pending_reviews, get_capture_by_id, 
-    update_capture_resolution, get_captures_for_tiger
+    update_capture_resolution, get_captures_for_tiger, get_tiger
 )
 
 app = FastAPI(title="TerraStripe - Pench Tiger Intelligence API")
@@ -52,6 +52,11 @@ class GPSPing(BaseModel):
 class BulkTriageRequest(BaseModel):
     directory_path: str
     confidence_threshold: float = 0.40
+
+class ResolveReviewRequest(BaseModel):
+    capture_id: int
+    action: str  # "confirm", "reassign", "new_tiger", "reject"
+    target_tiger_id: str = None
 
 def convert_to_decimal(ratio_tuple, ref):
     try:
@@ -121,7 +126,6 @@ def get_image_telemetry(file_path):
         lat, lon = get_station_coords(station)
         
     if not os.path.exists(file_path):
-        # File doesn't exist, return parsed station if found, else hash fallback
         if station and lat and lon:
             return station, fallback_timestamp, lat, lon
         return fallback_station, fallback_timestamp, fallback_lat, fallback_lon
@@ -134,7 +138,6 @@ def get_image_telemetry(file_path):
             if exif_raw:
                 exif = {TAGS.get(k, k): v for k, v in exif_raw.items()}
                 
-                # Check EXIF Timestamp
                 dt_str = exif.get("DateTimeOriginal") or exif.get("DateTime")
                 if dt_str:
                     try:
@@ -143,7 +146,6 @@ def get_image_telemetry(file_path):
                     except:
                         pass
                 
-                # Check EXIF GPS Coordinates (overrides folder-name default coordinates)
                 gps_info_raw = exif.get("GPSInfo")
                 if gps_info_raw:
                     gps_info = {GPSTAGS.get(k, k): v for k, v in gps_info_raw.items()}
@@ -156,13 +158,12 @@ def get_image_telemetry(file_path):
     except Exception as e:
         print(f"Error reading EXIF metadata for {filename}: {e}")
             
-    # 4. Apply Final Fallbacks
+    # Apply Final Fallbacks
     if lat is None or lon is None:
         lat = fallback_lat
         lon = fallback_lon
         
     if station is None:
-        # If we got GPS from EXIF, format a custom coordinate station tag
         if lat != fallback_lat or lon != fallback_lon:
             station = f"EXIF_GPS_{int(lat*1000)}_{int(lon*1000)}"
         else:
@@ -176,7 +177,6 @@ def get_image_telemetry(file_path):
 @app.get("/system_stats")
 async def get_system_stats():
     """Returns dynamic statistics of the system."""
-    # 1. Identified Tigers count
     try:
         tigers = get_all_tigers()
         identified_tigers = len(tigers)
@@ -184,18 +184,15 @@ async def get_system_stats():
         print(f"Error fetching tigers: {e}")
         identified_tigers = 0
 
-    # 2. Active cameras (unique stations in database)
     try:
         db = get_db()
         captures_res = db.table("captures").select("station").execute()
         stations = {row["station"] for row in captures_res.data}
-        # If no captures yet, return a baseline representing the Pench camera trap network
         active_cameras = len(stations) if stations else 142
     except Exception as e:
         print(f"Error fetching captures for stations: {e}")
         active_cameras = 142
 
-    # 3. Storage saved & Quarantined count from filesystem
     quarantine_dir = "data/quarantine"
     total_size_bytes = 0
     quarantined_images = 0
@@ -219,21 +216,16 @@ async def upload_image(file: UploadFile = File(...)):
     """Receives an image from the camera trap, crops the animal, matches it, and persists in Supabase."""
     file_path = f"data/raw/{file.filename}"
     
-    # Save the uploaded file locally
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
         
-    # Get telemetry deterministically
     station, timestamp, lat, lon = get_image_telemetry(file_path)
     
-    # --- TASK 1: Triage ---
     has_animal, bbox = process_triage(file_path)
     if not has_animal:
-        # Move to quarantine folder to save storage
         quarantine_path = f"data/quarantine/{file.filename}"
         shutil.move(file_path, quarantine_path)
         
-        # Log to Supabase captures
         try:
             add_capture(
                 tiger_id=None,
@@ -255,14 +247,12 @@ async def upload_image(file: UploadFile = File(...)):
     
     tiger_id, distance, match_status, match_message, embedding = match_tiger(file_path, bbox)
     
-    # Enroll tiger if it's new
     if match_status == "enrolled":
         try:
             enroll_tiger(tiger_id)
         except Exception as e:
             print(f"Error enrolling tiger {tiger_id}: {e}")
             
-    # Save in captures
     capture_status = "processed"
     if match_status == "pending_review":
         capture_status = "pending_review"
@@ -283,7 +273,6 @@ async def upload_image(file: UploadFile = File(...)):
     except Exception as e:
         print(f"Error saving capture in DB: {e}")
     
-    # Trigger dynamic alert checking
     try:
         run_alerts_check(tiger_id, lat, lon, station, timestamp)
     except Exception as e:
@@ -347,6 +336,7 @@ async def check_alerts(ping: GPSPing):
     }
 
 @app.get("/alerts")
+@app.get("/alerts/active")
 async def get_alerts():
     """Fetches all active alerts from Supabase."""
     try:
@@ -361,6 +351,7 @@ async def get_alerts():
         return []
 
 @app.post("/resolve_alert/{alert_id}")
+@app.post("/alerts/resolve/{alert_id}")
 async def resolve_alert_route(alert_id: int):
     """Marks an alert as resolved in Supabase."""
     try:
@@ -379,6 +370,29 @@ async def get_tigers():
     except Exception as e:
         print(f"Error fetching tigers: {e}")
         return []
+
+@app.get("/tigers/{tiger_id}")
+async def get_tiger_profile(tiger_id: str):
+    """Fetches profile, recent captures, and territory for a specific tiger."""
+    try:
+        tiger = get_tiger(tiger_id)
+        if not tiger:
+            raise HTTPException(status_code=404, detail="Tiger not found")
+        captures = get_captures_for_tiger(tiger_id)
+        area_sqkm, centroid, polygon = calculate_territory(tiger_id)
+        return {
+            "tiger": tiger,
+            "captures": captures or [],
+            "territory": {
+                "core_area_sqkm": round(area_sqkm, 2),
+                "centroid": centroid,
+                "polygon": polygon
+            }
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/captures")
 async def get_captures():
@@ -426,11 +440,6 @@ async def get_camera_stations():
     ]
     return stations
 
-class ResolveReviewRequest(BaseModel):
-    capture_id: int
-    action: str # "confirm", "reassign", "new_tiger", "reject"
-    target_tiger_id: str = None
-
 @app.get("/pending_reviews")
 async def get_pending_reviews_endpoint():
     """Fetches all captures flagged as ambiguous (pending human review) with reference comparison images."""
@@ -439,14 +448,12 @@ async def get_pending_reviews_endpoint():
         formatted_reviews = []
         for r in reviews:
             tiger_id = r.get("tiger_id")
-            # Fetch reference images for this tiger
             ref_captures = get_captures_for_tiger(tiger_id) if tiger_id else []
             ref_images = [
                 c.get("image_path") for c in ref_captures 
                 if c.get("status") == "processed" and c.get("image_path") != r.get("image_path")
             ][:3]
             
-            # Format image paths for HTTP serving
             img_name = os.path.basename(r.get("image_path", ""))
             candidate_raw_url = f"/data/raw/{img_name}"
             candidate_flank_url = f"/data/flanks/{img_name}" if os.path.exists(f"data/flanks/{img_name}") else candidate_raw_url
@@ -497,7 +504,6 @@ async def resolve_review_endpoint(req: ResolveReviewRequest):
                 pass
                 
         if req.action == "confirm":
-            # Confirmed match to candidate
             update_capture_resolution(req.capture_id, final_tiger_id, "processed")
             if embedding:
                 add_embedding_to_faiss(embedding, final_tiger_id)
@@ -505,7 +511,6 @@ async def resolve_review_endpoint(req: ResolveReviewRequest):
             msg = f"Match confirmed: Assigned to {final_tiger_id}"
             
         elif req.action == "reassign":
-            # Reassigned to existing tiger
             final_tiger_id = req.target_tiger_id
             update_capture_resolution(req.capture_id, final_tiger_id, "processed")
             if embedding:
@@ -514,7 +519,6 @@ async def resolve_review_endpoint(req: ResolveReviewRequest):
             msg = f"Capture reassigned to {final_tiger_id}"
             
         elif req.action == "new_tiger":
-            # Enrolled as new tiger
             tigers = get_all_tigers()
             new_id = f"T-{len(tigers) + 1:03d}"
             enroll_tiger(new_id, f"Individual {new_id}")
@@ -626,7 +630,6 @@ async def bulk_triage(req: BulkTriageRequest):
     if not os.path.exists(dir_path):
         return {"status": "error", "message": f"Directory '{dir_path}' does not exist."}
         
-    # Get all image files in the directory
     valid_extensions = {".jpg", ".jpeg", ".png", ".bmp", ".tiff"}
     image_files = []
     for root, _, files in os.walk(dir_path):
@@ -642,26 +645,19 @@ async def bulk_triage(req: BulkTriageRequest):
     processed_count = 0
     total_space_saved_bytes = 0
     
-    # Track coordinates and other data
     os.makedirs("data/quarantine", exist_ok=True)
     
-    # Process images
     for filepath in image_files:
         filename = os.path.basename(filepath)
         
-        # 1. MegaDetector Triage
         has_animal, bbox = process_triage(filepath, req.confidence_threshold)
-        
-        # Get metadata deterministically
         station, timestamp, lat, lon = get_image_telemetry(filepath)
         
         if not has_animal:
-            # Safe delete (move to quarantine)
             file_size = os.path.getsize(filepath)
             total_space_saved_bytes += file_size
             
             quarantine_path = os.path.join("data/quarantine", filename)
-            # Ensure unique filename in quarantine
             if os.path.exists(quarantine_path):
                 base, ext = os.path.splitext(filename)
                 quarantine_path = os.path.join("data/quarantine", f"{base}_{int(time.time())}{ext}")
@@ -669,7 +665,6 @@ async def bulk_triage(req: BulkTriageRequest):
             shutil.move(filepath, quarantine_path)
             quarantined_count += 1
             
-            # Log in database as quarantined
             try:
                 add_capture(
                     tiger_id=None,
@@ -684,24 +679,20 @@ async def bulk_triage(req: BulkTriageRequest):
             except Exception as e:
                 print(f"Error logging quarantine: {e}")
         else:
-            # It has an animal, run identification
             processed_count += 1
             try:
                 tiger_id, distance, match_status, match_message, embedding = match_tiger(filepath, bbox)
                 
-                # If new tiger, enroll it in Supabase
                 if match_status == "enrolled":
                     try:
                         enroll_tiger(tiger_id)
                     except Exception as e:
                         print(f"Error enrolling tiger {tiger_id}: {e}")
                 
-                # Determine database capture status
                 capture_status = "processed"
                 if match_status == "pending_review":
                     capture_status = "pending_review"
                     
-                # Save in captures
                 add_capture(
                     tiger_id=tiger_id,
                     image_path=filename,
@@ -715,7 +706,10 @@ async def bulk_triage(req: BulkTriageRequest):
                 )
                 invalidate_territory_cache(tiger_id)
                 
+<<<<<<< HEAD
                 # Trigger alerts check
+=======
+>>>>>>> 41ab1b0a9407bb4fbc82e38c5a023d23032e1c7a
                 try:
                     run_alerts_check(tiger_id, lat, lon, station, timestamp)
                 except Exception as e:
@@ -725,11 +719,7 @@ async def bulk_triage(req: BulkTriageRequest):
                 print(f"Error processing matching for {filename}: {e}")
                 
     elapsed_time = time.time() - start_time
-    
-    # Manual triage time saved calculation:
-    # Assume a manual reviewer takes an average of 4 seconds per image to review.
     time_saved_seconds = quarantined_count * 4
-    
     space_saved_mb = round(total_space_saved_bytes / (1024 * 1024), 2)
     
     return {
@@ -743,6 +733,7 @@ async def bulk_triage(req: BulkTriageRequest):
         "message": f"Successfully processed {total_frames} frames. Quarantined {quarantined_count} blank images."
     }
 
+<<<<<<< HEAD
 import sys
 from types import ModuleType
 
@@ -762,3 +753,8 @@ if "pkg_resources" not in sys.modules:
 if __name__ == '__main__':
     import uvicorn
     uvicorn.run('src.main:app', host='127.0.0.1', port=8000, reload=True)
+=======
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("src.main:app", host="127.0.0.1", port=8000, reload=True)
+>>>>>>> 41ab1b0a9407bb4fbc82e38c5a023d23032e1c7a
