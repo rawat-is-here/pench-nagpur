@@ -3,6 +3,19 @@ import geopandas as gpd
 from shapely.geometry import MultiPoint, Polygon
 from src.db import get_db
 
+# Thread-safe in-memory cache for territories
+_territory_cache = {}
+
+def invalidate_territory_cache(tiger_id=None):
+    """Invalidates the territory cache for a specific tiger, or all tigers."""
+    global _territory_cache
+    if tiger_id:
+        _territory_cache.pop(tiger_id, None)
+        print(f"Invalidated territory cache for tiger {tiger_id}")
+    else:
+        _territory_cache.clear()
+        print("Invalidated all territory caches")
+
 def calculate_territory(tiger_id):
     """
     Fetches captures from Supabase and calculates the MCP (Minimum Convex Polygon).
@@ -11,6 +24,12 @@ def calculate_territory(tiger_id):
     - centroid_dict: {"lat": float, "lon": float}
     - polygon_coordinates: list of [lat, lon] pairs for Leaflet mapping
     """
+    global _territory_cache
+    if tiger_id in _territory_cache:
+        print(f"Returning cached territory for tiger {tiger_id}")
+        cached = _territory_cache[tiger_id]
+        return cached["area"], cached["centroid"], cached["polygon"]
+
     db = get_db()
     
     # Query captures for this tiger from Supabase
@@ -34,7 +53,13 @@ def calculate_territory(tiger_id):
     if len(points) < 3:
         avg_lat = sum(p["latitude"] for p in points) / len(points)
         avg_lon = sum(p["longitude"] for p in points) / len(points)
-        return 0.0, {"lat": avg_lat, "lon": avg_lon}, []
+        centroid = {"lat": avg_lat, "lon": avg_lon}
+        _territory_cache[tiger_id] = {
+            "area": 0.0,
+            "centroid": centroid,
+            "polygon": []
+        }
+        return 0.0, centroid, []
         
     # Extract coordinates
     lats = [p["latitude"] for p in points]
@@ -58,7 +83,13 @@ def calculate_territory(tiger_id):
     if not isinstance(mcp, Polygon):
         centroid_metric = mcp.centroid
         centroid_gps = gpd.GeoSeries([centroid_metric], crs="EPSG:32644").to_crs(epsg=4326).iloc[0]
-        return 0.0, {"lat": centroid_gps.y, "lon": centroid_gps.x}, []
+        centroid = {"lat": centroid_gps.y, "lon": centroid_gps.x}
+        _territory_cache[tiger_id] = {
+            "area": 0.0,
+            "centroid": centroid,
+            "polygon": []
+        }
+        return 0.0, centroid, []
         
     # Calculate area in sq km
     area_sqkm = mcp.area / 1_000_000
@@ -66,6 +97,7 @@ def calculate_territory(tiger_id):
     # Get centroid and project back to GPS (EPSG:4326)
     centroid_metric = mcp.centroid
     centroid_gps = gpd.GeoSeries([centroid_metric], crs="EPSG:32644").to_crs(epsg=4326).iloc[0]
+    centroid_gps_dict = {"lat": centroid_gps.y, "lon": centroid_gps.x}
     
     # Project boundary back to GPS
     exterior_coords = list(mcp.exterior.coords)
@@ -78,7 +110,14 @@ def calculate_territory(tiger_id):
     # Convert boundary coords from [lon, lat] to [lat, lon] for Leaflet
     polygon_gps = [[coord[1], coord[0]] for coord in boundary_polygon]
     
-    return area_sqkm, {"lat": centroid_gps.y, "lon": centroid_gps.x}, polygon_gps
+    # Cache the result
+    _territory_cache[tiger_id] = {
+        "area": area_sqkm,
+        "centroid": centroid_gps_dict,
+        "polygon": polygon_gps
+    }
+    
+    return area_sqkm, centroid_gps_dict, polygon_gps
 
 def get_territory_overlaps():
     """

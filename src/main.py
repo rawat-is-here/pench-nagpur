@@ -10,7 +10,7 @@ from datetime import datetime
 # Import modular functions
 from src.triage import process_triage
 from src.stripe_matcher import match_tiger
-from src.spatial_mapping import calculate_territory, get_territory_overlaps
+from src.spatial_mapping import calculate_territory, get_territory_overlaps, invalidate_territory_cache
 from src.alerts_engine import check_deviation, run_alerts_check
 from src.db import get_db, get_all_tigers, enroll_tiger, add_capture, add_alert, get_active_alerts
 
@@ -169,6 +169,7 @@ async def upload_image(file: UploadFile = File(...)):
             confidence=round(1.0 - distance, 4),
             embedding=embedding
         )
+        invalidate_territory_cache(tiger_id)
     except Exception as e:
         print(f"Error saving capture in DB: {e}")
     
@@ -364,6 +365,7 @@ async def bulk_triage(req: BulkTriageRequest):
                     confidence=round(1.0 - distance, 4),
                     embedding=embedding
                 )
+                invalidate_territory_cache(tiger_id)
                 
                 # Trigger alerts check
                 try:

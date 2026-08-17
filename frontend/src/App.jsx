@@ -9,16 +9,12 @@ import {
 } from 'lucide-react';
 
 import L from 'leaflet';
-import icon from 'leaflet/dist/images/marker-icon.png';
-import iconShadow from 'leaflet/dist/images/marker-shadow.png';
-
-let DefaultIcon = L.icon({ 
-  iconUrl: icon, 
-  shadowUrl: iconShadow, 
-  iconSize: [25, 41], 
-  iconAnchor: [12, 41] 
+delete L.Icon.Default.prototype._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+  iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
 });
-L.Marker.prototype.options.icon = DefaultIcon;
 
 export default function App() {
   const [territory, setTerritory] = useState(null);
@@ -297,13 +293,59 @@ export default function App() {
                 </div>
               </div>
               
-              {/* Map Canvas */}
               <div className="flex-grow bg-slate-950 relative z-0">
-                <MapContainer center={[21.655, 79.215]} zoom={11.5} style={{ height: '100%', width: '100%' }}>
+                <MapContainer 
+                  center={[21.65, 79.25]} 
+                  zoom={11} 
+                  minZoom={10} 
+                  maxBounds={[[21.15, 78.75], [22.15, 79.75]]}
+                  style={{ height: '100%', width: '100%' }}
+                >
                   <TileLayer
                     url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
                     attribution='&copy; <a href="https://carto.com/">Carto</a>'
                   />
+                  
+                  {/* Pench Reserve Zones */}
+                  <Polygon 
+                    positions={[[21.71, 79.19], [21.71, 79.29], [21.61, 79.29], [21.61, 79.19]]} 
+                    pathOptions={{ color: '#059669', fillColor: '#059669', fillOpacity: 0.08, weight: 2 }}
+                  >
+                    <Popup>
+                      <strong className="text-emerald-400">Pench Core Forest Zone</strong><br/>
+                      Strict wildlife protection core zone.
+                    </Popup>
+                  </Polygon>
+
+                  <Polygon 
+                    positions={[[21.75, 79.15], [21.75, 79.35], [21.55, 79.35], [21.55, 79.15]]} 
+                    pathOptions={{ color: '#d97706', fillColor: '#d97706', fillOpacity: 0.03, weight: 1.5, dashArray: '5, 5' }}
+                  >
+                    <Popup>
+                      <strong className="text-amber-500">Pench Buffer Zone</strong><br/>
+                      Co-existence forest area bordering human settlements.
+                    </Popup>
+                  </Polygon>
+
+                  <Polygon 
+                    positions={[[21.55, 79.15], [21.55, 79.35], [21.50, 79.35], [21.50, 79.15]]} 
+                    pathOptions={{ color: '#dc2626', fillColor: '#dc2626', fillOpacity: 0.06, weight: 1, dashArray: '3, 3' }}
+                  >
+                    <Popup>
+                      <strong className="text-red-500">⚠️ Southern Village Border</strong><br/>
+                      High conflict risk settlement boundaries (Lat &lt; 21.57).
+                    </Popup>
+                  </Polygon>
+
+                  <Polygon 
+                    positions={[[21.75, 79.33], [21.75, 79.38], [21.55, 79.38], [21.55, 79.33]]} 
+                    pathOptions={{ color: '#dc2626', fillColor: '#dc2626', fillOpacity: 0.06, weight: 1, dashArray: '3, 3' }}
+                  >
+                    <Popup>
+                      <strong className="text-red-500">⚠️ Eastern Village Border</strong><br/>
+                      High conflict risk settlement boundaries (Lon &gt; 79.33).
+                    </Popup>
+                  </Polygon>
                   
                   {/* Home range boundary polygon */}
                   {territory && territory.polygon && territory.polygon.length > 0 && (
