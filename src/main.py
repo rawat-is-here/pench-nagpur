@@ -707,6 +707,201 @@ async def bulk_triage(req: BulkTriageRequest):
                 # Trigger alerts check
                 try:
                     run_alerts_check(tiger_id, lat, lon, station, timestamp)
+            msg = f"New individual enrolled: {new_id}"
+            
+        elif req.action == "reject":
+            update_capture_resolution(req.capture_id, None, "rejected")
+            return {"status": "success", "message": f"Capture {req.capture_id} marked as rejected."}
+            
+        else:
+            return {"status": "error", "message": f"Unknown action '{req.action}'."}
+            
+        # Trigger territory & alert checks
+        lat = capture.get("latitude")
+        lon = capture.get("longitude")
+        station = capture.get("station")
+        timestamp = capture.get("timestamp")
+        
+        if lat and lon and station and timestamp:
+            try:
+                run_alerts_check(final_tiger_id, lat, lon, station, timestamp)
+            except Exception as e:
+                print(f"Error checking alerts after resolution: {e}")
+                
+        return {
+            "status": "success",
+            "message": msg,
+            "tiger_id": final_tiger_id,
+            "capture_id": req.capture_id
+        }
+    except Exception as e:
+        print(f"Error resolving review: {e}")
+        return {"status": "error", "message": str(e)}
+
+@app.get("/quarantined_images")
+async def get_quarantined_images():
+    """Lists all quarantined images with file sizes and timestamps (Pillar i)."""
+    quarantine_dir = "data/quarantine"
+    items = []
+    if os.path.exists(quarantine_dir):
+        for entry in os.scandir(quarantine_dir):
+            if entry.is_file():
+                items.append({
+                    "filename": entry.name,
+                    "size_kb": round(entry.stat().st_size / 1024, 1),
+                    "modified_time": datetime.fromtimestamp(entry.stat().st_mtime).isoformat(),
+                    "image_url": f"/data/quarantine/{entry.name}"
+                })
+    return items
+
+@app.post("/restore_quarantine/{filename}")
+async def restore_quarantine(filename: str):
+    """Safely restores a quarantined blank frame and re-evaluates through the AI pipeline."""
+    quarantine_path = os.path.join("data/quarantine", filename)
+    raw_path = os.path.join("data/raw", filename)
+    
+    if not os.path.exists(quarantine_path):
+        return {"status": "error", "message": f"File '{filename}' not found in quarantine."}
+        
+    shutil.move(quarantine_path, raw_path)
+    
+    # Run triage & matching
+    has_animal, bbox = process_triage(raw_path, confidence_threshold=0.20)
+    station, timestamp, lat, lon = get_image_telemetry(raw_path)
+    
+    if not has_animal:
+        bbox = [0, 0, 100, 100]
+        
+    tiger_id, distance, match_status, match_message, embedding = match_tiger(raw_path, bbox)
+    if match_status == "enrolled":
+        enroll_tiger(tiger_id)
+        
+    capture_status = "processed" if match_status != "pending_review" else "pending_review"
+    add_capture(
+        tiger_id=tiger_id,
+        image_path=filename,
+        station=station,
+        timestamp=timestamp,
+        latitude=lat,
+        longitude=lon,
+        status=capture_status,
+        confidence=round(1.0 - distance, 4),
+        embedding=embedding
+    )
+    invalidate_territory_cache(tiger_id)
+    
+    return {
+        "status": "success",
+        "message": f"Restored {filename} and processed as {tiger_id} ({match_status}).",
+        "tiger_id": tiger_id,
+        "match_status": match_status
+    }
+
+@app.post("/bulk_triage")
+async def bulk_triage(req: BulkTriageRequest):
+    """
+    Ingests a raw image directory, classifies each frame,
+    and moves blank images to the quarantine directory.
+    Reports count of frames, space saved, and time saved.
+    """
+    start_time = time.time()
+    
+    dir_path = req.directory_path
+    if not os.path.exists(dir_path):
+        return {"status": "error", "message": f"Directory '{dir_path}' does not exist."}
+        
+    # Get all image files in the directory
+    valid_extensions = {".jpg", ".jpeg", ".png", ".bmp", ".tiff"}
+    image_files = []
+    for root, _, files in os.walk(dir_path):
+        for f in files:
+            if os.path.splitext(f)[1].lower() in valid_extensions:
+                image_files.append(os.path.join(root, f))
+                
+    total_frames = len(image_files)
+    if total_frames == 0:
+        return {"status": "success", "message": "No images found in the specified directory.", "total_frames": 0}
+        
+    quarantined_count = 0
+    processed_count = 0
+    total_space_saved_bytes = 0
+    
+    # Track coordinates and other data
+    os.makedirs("data/quarantine", exist_ok=True)
+    
+    # Process images
+    for filepath in image_files:
+        filename = os.path.basename(filepath)
+        
+        # 1. MegaDetector Triage
+        has_animal, bbox = process_triage(filepath, req.confidence_threshold)
+        
+        # Get metadata deterministically
+        station, timestamp, lat, lon = get_image_telemetry(filepath)
+        
+        if not has_animal:
+            # Safe delete (move to quarantine)
+            file_size = os.path.getsize(filepath)
+            total_space_saved_bytes += file_size
+            
+            quarantine_path = os.path.join("data/quarantine", filename)
+            # Ensure unique filename in quarantine
+            if os.path.exists(quarantine_path):
+                base, ext = os.path.splitext(filename)
+                quarantine_path = os.path.join("data/quarantine", f"{base}_{int(time.time())}{ext}")
+                
+            shutil.move(filepath, quarantine_path)
+            quarantined_count += 1
+            
+            # Log in database as quarantined
+            try:
+                add_capture(
+                    tiger_id=None,
+                    image_path=os.path.basename(quarantine_path),
+                    station=station,
+                    timestamp=timestamp,
+                    latitude=lat,
+                    longitude=lon,
+                    status="quarantined",
+                    confidence=0.0
+                )
+            except Exception as e:
+                print(f"Error logging quarantine: {e}")
+        else:
+            # It has an animal, run identification
+            processed_count += 1
+            try:
+                tiger_id, distance, match_status, match_message, embedding = match_tiger(filepath, bbox)
+                
+                # If new tiger, enroll it in Supabase
+                if match_status == "enrolled":
+                    try:
+                        enroll_tiger(tiger_id)
+                    except Exception as e:
+                        print(f"Error enrolling tiger {tiger_id}: {e}")
+                
+                # Determine database capture status
+                capture_status = "processed"
+                if match_status == "pending_review":
+                    capture_status = "pending_review"
+                    
+                # Save in captures
+                add_capture(
+                    tiger_id=tiger_id,
+                    image_path=filename,
+                    station=station,
+                    timestamp=timestamp,
+                    latitude=lat,
+                    longitude=lon,
+                    status=capture_status,
+                    confidence=round(1.0 - distance, 4),
+                    embedding=embedding
+                )
+                invalidate_territory_cache(tiger_id)
+                
+                # Trigger alerts check
+                try:
+                    run_alerts_check(tiger_id, lat, lon, station, timestamp)
                 except Exception as e:
                     print(f"Error checking alerts: {e}")
                     
@@ -725,6 +920,17 @@ async def bulk_triage(req: BulkTriageRequest):
         "status": "success",
         "total_frames_ingested": total_frames,
         "frames_quarantined": quarantined_count,
+        "frames_retained": processed_count,
+        "space_saved_mb": space_saved_mb,
+        "processing_time_seconds": round(elapsed_time, 2),
+        "manual_time_saved_seconds": time_saved_seconds,
+        "message": f"Successfully processed {total_frames} frames. Quarantined {quarantined_count} blank images."
+    }
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("src.main:app", host="127.0.0.1", port=8000, reload=True)
+
 # --- Compatibility shim for legacy YOLOv5 on modern Python ---
 import sys
 from types import ModuleType
@@ -846,7 +1052,7 @@ def get_image_telemetry(file_path):
     # Fallback calculations
     h = int(hashlib.md5(filename.encode()).hexdigest(), 16)
     fallback_lat = 21.55 + (h % 1000) / 1000.0 * 0.20
-    fallback_lon = 79.15 + ((h // 1000) % 1000) / 1000.0 * 0.20
+    fallback_lon = 79.15 + (h // 1000) % 1000 / 1000.0 * 0.20
     fallback_station_id = (h // 1000000) % 20 + 1
     fallback_station = f"STATION_A{fallback_station_id:02d}"
     fallback_timestamp = datetime.now(timezone.utc).isoformat()
@@ -1236,103 +1442,6 @@ async def resolve_review(req: ResolveReviewRequest):
         return {"status": "success", "message": msg, "tiger_id": final_tiger_id}
     except Exception as e:
         return {"status": "error", "message": str(e)}
-
-@app.get("/quarantined_images")
-async def get_quarantined_images():
-    """Lists all quarantined images."""
-    quarantine_dir = "data/quarantine"
-    items = []
-    if os.path.exists(quarantine_dir):
-        for entry in os.scandir(quarantine_dir):
-            if entry.is_file():
-                items.append({
-                    "filename": entry.name,
-                    "size_kb": round(entry.stat().st_size / 1024, 1),
-                    "modified_time": datetime.fromtimestamp(entry.stat().st_mtime).isoformat(),
-                    "image_url": f"/data/quarantine/{entry.name}"
-                })
-    return items
-
-@app.post("/restore_quarantine/{filename}")
-async def restore_quarantine(filename: str):
-    """Safely restores a quarantined frame."""
-    quarantine_path = os.path.join("data/quarantine", filename)
-    raw_path = os.path.join("data/raw", filename)
-    if not os.path.exists(quarantine_path):
-        return {"status": "error", "message": f"File '{filename}' not found in quarantine."}
-    shutil.move(quarantine_path, raw_path)
-    return {"status": "success", "message": f"Restored {filename}."}
-
-@app.post("/bulk_triage")
-async def bulk_triage(req: BulkTriageRequest):
-    """Batch directory ingest and triage."""
-    start_time = time.time()
-    dir_path = req.directory_path
-    
-    if not os.path.exists(dir_path):
-        return {"status": "error", "message": f"Directory '{dir_path}' does not exist."}
-        
-    valid_extensions = {".jpg", ".jpeg", ".png", ".bmp", ".tiff"}
-    image_files = []
-    for root, _, files in os.walk(dir_path):
-        for f in files:
-            if os.path.splitext(f)[1].lower() in valid_extensions:
-                image_files.append(os.path.join(root, f))
-                
-    total_frames = len(image_files)
-    if total_frames == 0:
-        return {"status": "success", "message": "No images found in specified directory.", "total_frames": 0}
-        
-    quarantined_count = 0
-    processed_count = 0
-    total_space_saved_bytes = 0
-    
-    for filepath in image_files:
-        filename = os.path.basename(filepath)
-        has_animal, bbox = process_triage(filepath, req.confidence_threshold)
-        station, timestamp, lat, lon = get_image_telemetry(filepath)
-        
-        if not has_animal:
-            file_size = os.path.getsize(filepath)
-            total_space_saved_bytes += file_size
-            quarantine_path = os.path.join("data/quarantine", filename)
-            shutil.move(filepath, quarantine_path)
-            quarantined_count += 1
-        else:
-            processed_count += 1
-            try:
-                tiger_id, distance, match_status, _, embedding = match_tiger(filepath, bbox)
-                if match_status == "enrolled":
-                    enroll_tiger(tiger_id)
-                add_capture(
-                    tiger_id=tiger_id,
-                    image_path=filename,
-                    station=station,
-                    timestamp=timestamp,
-                    latitude=lat,
-                    longitude=lon,
-                    status="processed",
-                    confidence=round(1.0 - distance, 4),
-                    embedding=embedding
-                )
-                invalidate_territory_cache(tiger_id)
-            except Exception as e:
-                print(f"Error matching {filename}: {e}")
-                
-    elapsed_time = round(time.time() - start_time, 2)
-    space_saved_mb = round(total_space_saved_bytes / (1024 * 1024), 2)
-    manual_hours_saved = round((quarantined_count * 4) / 3600, 2)
-    
-    return {
-        "status": "success",
-        "total_frames_ingested": total_frames,
-        "frames_quarantined": quarantined_count,
-        "frames_retained": processed_count,
-        "space_saved_mb": space_saved_mb,
-        "processing_time_seconds": elapsed_time,
-        "manual_hours_saved": manual_hours_saved,
-        "message": f"Processed {total_frames} frames in {elapsed_time}s. Safely quarantined {quarantined_count} blanks."
-    }
 
 if __name__ == "__main__":
     import uvicorn

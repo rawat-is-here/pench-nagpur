@@ -1,13 +1,9 @@
-# Python
+# Python & Bytecode
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
-env/
-venv/
-.venv/
-ENV/
 build/
 develop-eggs/
 dist/
@@ -23,11 +19,27 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Virtual Environments
+env/
+venv/
+venv*/
+.env/
+.venv/
+.venv*/
+ENV/
 
 # Environment variables & secrets
 .env
 .env.local
 .env.*.local
+*.pem
+*.key
 
 # Node & Frontend
 node_modules/
@@ -40,15 +52,26 @@ dist/
 dist-ssr/
 *.local
 
-# Data & Binary caches (Large files)
+# Data, Datasets & Large Binary Weights
 data/quarantine/
 data/raw/
 data/cropped/
 data/flanks/
+data/dataset*/
+data/datasets/
+data/*.json
 *.bin
 *.pt
 *.pth
 *.onnx
+*.pkl
+*.h5
+*.safetensors
+
+# Databases
+*.db
+*.sqlite
+*.sqlite3
 
 # IDE & OS
 .vscode/*
