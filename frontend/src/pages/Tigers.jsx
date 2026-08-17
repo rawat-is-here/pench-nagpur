@@ -70,11 +70,9 @@ export default function Tigers() {
             Fauna Intelligence & Biometric Archive
           </div>
           <h1 className="text-2xl font-extrabold text-forest-950 tracking-tight">
-            Pench Resident Tiger Dossiers
+            Pench Resident Tiger Profiles
           </h1>
-          <p className="text-xs text-slate-600">
-            Catalogued individuals ({territories.length} Tigers), stripe biometrics, activity centroids, and territorial patrol radii.
-          </p>
+          
         </div>
 
         {/* SEARCH & FILTERS */}
@@ -165,7 +163,7 @@ export default function Tigers() {
                   <Camera size={11} /> {t.capture_points ? t.capture_points.length : 3} Captures
                 </span>
                 <span className="text-forest-800 font-bold group-hover:translate-x-0.5 transition-transform">
-                  View Dossier →
+                  View Profile →
                 </span>
               </div>
             </div>
@@ -256,7 +254,7 @@ export default function Tigers() {
                 onClick={() => setSelectedTiger(null)}
                 className="px-4 py-1.5 bg-forest-900 text-white rounded-lg text-xs font-bold hover:bg-forest-800 cursor-pointer"
               >
-                Close Dossier
+                Close Profile
               </button>
             </div>
           </div>

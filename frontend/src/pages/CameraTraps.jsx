@@ -136,9 +136,7 @@ export default function CameraTraps({ defaultTab = 'batch' }) {
           <h1 className="text-2xl font-extrabold text-forest-950 tracking-tight">
             Camera Trap Stations & Triage Terminal
           </h1>
-          <p className="text-xs text-slate-600">
-            Automated EXIF GPS location extraction, MegaDetector V6 blank filtering, and batch ingestion.
-          </p>
+          
         </div>
 
         {/* TAB TOGGLE */}
@@ -183,9 +181,7 @@ export default function CameraTraps({ defaultTab = 'batch' }) {
             </div>
 
             <div className="panel-body space-y-4 p-5">
-              <p className="text-xs text-slate-600">
-                Select or drag a batch of raw JPEG camera trap photos. Location coordinates and timestamps are extracted directly from embedded EXIF headers with zero reliance on CSV files.
-              </p>
+              
 
               <label className={`dropzone-container block cursor-pointer p-8 border-2 border-dashed border-slate-300 rounded-xl hover:border-forest-600 transition-all text-center bg-slate-50 ${isBulkUploading ? 'opacity-75' : ''}`}>
                 <input

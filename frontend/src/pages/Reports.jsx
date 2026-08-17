@@ -17,9 +17,7 @@ export default function Reports() {
           <h1 className="text-2xl font-extrabold text-forest-950 tracking-tight">
             Reserve Intelligence Exports
           </h1>
-          <p className="text-xs text-slate-600">
-            Export NTCA census summaries, tiger home range shapefiles/GeoJSON, and ranger patrol briefing PDFs.
-          </p>
+          
         </div>
       </div>
 

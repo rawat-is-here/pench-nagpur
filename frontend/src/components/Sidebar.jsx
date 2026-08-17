@@ -23,16 +23,12 @@ export default function Sidebar({ onRefresh, isRefreshing }) {
     <aside className="sidebar">
       {/* BRAND HEADER */}
       <div className="brand">
-        <div className="brand-badge">
-          Pench Intelligence
-        </div>
         <div className="flex items-center gap-3">
           <div className="brand-mark">
             <img src="/favicon.svg" alt="TerraStripe Logo" className="w-6 h-6 object-contain" />
           </div>
           <div>
             <div className="brand-title">TERRASTRIPE</div>
-            <div className="brand-subtitle">Reserve Spatial Intelligence</div>
           </div>
         </div>
       </div>
@@ -43,11 +39,11 @@ export default function Sidebar({ onRefresh, isRefreshing }) {
           <div className="sidebar-section-title">Operations Core</div>
           <NavLink to="/" end className={getNavClass}>
             <LayoutDashboard size={16} />
-            <span>Command Center</span>
+            <span>Alert Mapping</span>
           </NavLink>
           <NavLink to="/live-map" className={getNavClass}>
             <Compass size={16} />
-            <span>Tactical GIS Map</span>
+            <span>Territory Map</span>
           </NavLink>
         </div>
 
@@ -55,11 +51,11 @@ export default function Sidebar({ onRefresh, isRefreshing }) {
           <div className="sidebar-section-title">Fauna Intelligence</div>
           <NavLink to="/tigers" className={getNavClass}>
             <Eye size={16} />
-            <span>Tiger Biometrics</span>
+            <span>Profile and Archives</span>
           </NavLink>
           <NavLink to="/territories" className={getNavClass}>
             <Layers size={16} />
-            <span>Home Ranges & MCP</span>
+            <span>Area and Coverage</span>
           </NavLink>
 
         </div>
@@ -69,7 +65,7 @@ export default function Sidebar({ onRefresh, isRefreshing }) {
 
           <NavLink to="/add-dataset" className={getNavClass}>
             <FolderSync size={16} />
-            <span>Add new dataset</span>
+            <span>Import data and Cam Health</span>
           </NavLink>
           <NavLink to="/quarantine" className={getNavClass}>
             <ShieldAlert size={16} />
@@ -85,25 +81,14 @@ export default function Sidebar({ onRefresh, isRefreshing }) {
           </NavLink>
           <NavLink to="/reports" className={getNavClass}>
             <FileSpreadsheet size={16} />
-            <span>Field Exports</span>
+            <span>PDF and Reports</span>
           </NavLink>
         </div>
       </div>
 
       {/* QUICK SYSTEM STATUS & REFRESH */}
       <div className="sidebar-bottom">
-        <div className="quick-telemetry-box">
-          <div className="flex justify-between items-center text-[10px] text-emerald-400 font-bold uppercase tracking-wider mb-1">
-            <span className="flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-              MegaDetector V6
-            </span>
-            <span className="text-white font-mono">MDV6-e</span>
-          </div>
-          <div className="text-[11px] text-slate-300">
-            ResNet50 FAISS cosine index active
-          </div>
-        </div>
+
 
         <button
           className="nav-item justify-center text-xs font-semibold"

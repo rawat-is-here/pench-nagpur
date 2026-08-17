@@ -76,9 +76,7 @@ export default function ManualReview() {
           <h1 className="text-2xl font-extrabold text-forest-950 tracking-tight">
             Biometric Matches Awaiting Verification
           </h1>
-          <p className="text-xs text-slate-600">
-            Audit low-confidence matching scores and stripe contours. Confirm match, reassign to another resident tiger, or register new individuals.
-          </p>
+          
         </div>
 
         <div>

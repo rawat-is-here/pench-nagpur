@@ -116,9 +116,7 @@ export default function Territories() {
           <h1 className="text-2xl font-extrabold text-forest-950 tracking-tight">
             Home Range & Centroid Patrol Radii
           </h1>
-          <p className="text-xs text-slate-600">
-            Minimum Convex Polygon (MCP) calculations, activity centroid mapping, and territorial buffer radii for 30 resident tigers.
-          </p>
+          
         </div>
 
         {/* STAT BADGES */}

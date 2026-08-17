@@ -165,11 +165,9 @@ export default function Topbar({ onRefresh, isRefreshing }) {
       <div className="flex w-full justify-between items-start gap-4">
         <div className="flex flex-col">
           <h1 className="text-xl font-extrabold text-forest-950 tracking-tight leading-tight mt-0.5">
-            Reserve Operations Command Center
+            Pench Reserve Alert Mapping Console
           </h1>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Pench Tiger Reserve Core & Buffer Sectors · Real-Time MegaDetector V6 Triage & Biometric Re-ID
-          </p>
+          
         </div>
 
         <div className="topbar-actions flex items-center gap-3 self-center">

@@ -127,9 +127,7 @@ export default function QuarantinedData() {
           <h1 className="text-2xl font-extrabold text-forest-950 tracking-tight">
             Quarantined Staging (Blanks & Empty Frames)
           </h1>
-          <p className="text-xs text-slate-600">
-            MegaDetector V6 classified empty files. Permanently delete blank frames to save reserve storage or route them to manual review.
-          </p>
+          
         </div>
 
         <div className="flex items-center gap-3 w-full md:w-auto">

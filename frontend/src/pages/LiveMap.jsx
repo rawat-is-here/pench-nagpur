@@ -140,9 +140,7 @@ export default function LiveMap() {
           <h1 className="text-2xl font-extrabold text-forest-950 tracking-tight">
             Tactical Wildlife GIS & Territory Mapping
           </h1>
-          <p className="text-xs text-slate-600">
-            Displaying home-range Minimum Convex Polygons (MCP), centroid activity nodes, and territorial patrol radii.
-          </p>
+          
         </div>
 
         {/* TIGER SELECTOR DROPDOWN */}

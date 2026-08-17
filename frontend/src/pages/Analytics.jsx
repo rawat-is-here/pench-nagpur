@@ -13,9 +13,7 @@ export default function Analytics() {
           <h1 className="text-2xl font-extrabold text-forest-950 tracking-tight">
             System & Triage Analytics
           </h1>
-          <p className="text-xs text-slate-600">
-            Real-time inference latency, FAISS indexing throughput, and camera trap storage optimization metrics.
-          </p>
+          
         </div>
       </div>
 
