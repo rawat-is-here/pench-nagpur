@@ -1,6 +1,101 @@
 @import "tailwindcss";
 
+:root {
+  --forest-950: #0b2117;
+  --forest-900: #102d20;
+  --forest-800: #163a2a;
+  --forest-700: #24553d;
+  --forest-600: #2f6b4f;
+  --forest-500: #3f8060;
+
+  --tiger-500: #c98222;
+  --tiger-400: #e1a23b;
+  --tiger-soft: #f5e8cf;
+
+  --page-bg: #f3f5f0;
+  --card-bg: #ffffff;
+  --border: #dfe5dd;
+
+  --text-primary: #17231c;
+  --text-secondary: #68756d;
+  --text-muted: #8b968f;
+
+  --danger: #c94a45;
+  --warning: #c98222;
+  --success: #3f8060;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
 body {
-  background-color: #0f172a; /* Deep slate dark mode */
-  color: white;
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+
+  background: var(--page-bg);
+  color: var(--text-primary);
+
+  font-family:
+    Inter,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+
+  -webkit-font-smoothing: antialiased;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+::selection {
+  background: rgba(201, 130, 34, 0.22);
+  color: var(--text-primary);
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #c8d0c9;
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #aab5ad;
+}
+
+/* Leaflet */
+.leaflet-container {
+  font-family: inherit;
+}
+
+.leaflet-control-zoom a {
+  color: var(--forest-800) !important;
+}
+
+.leaflet-popup-content-wrapper,
+.leaflet-popup-tip {
+  border-radius: 10px;
 }

@@ -6,11 +6,14 @@ import os
 import hashlib
 import time
 from datetime import datetime
+from PIL import Image
+from PIL.ExifTags import TAGS, GPSTAGS
+import re
 
 # Import modular functions
 from src.triage import process_triage
 from src.stripe_matcher import match_tiger
-from src.spatial_mapping import calculate_territory, get_territory_overlaps
+from src.spatial_mapping import calculate_territory, get_territory_overlaps, invalidate_territory_cache
 from src.alerts_engine import check_deviation, run_alerts_check
 from src.db import get_db, get_all_tigers, enroll_tiger, add_capture, add_alert, get_active_alerts
 
@@ -40,27 +43,124 @@ class BulkTriageRequest(BaseModel):
     directory_path: str
     confidence_threshold: float = 0.40
 
-def get_image_telemetry(filename):
+def convert_to_decimal(ratio_tuple, ref):
+    try:
+        def to_float(val):
+            if hasattr(val, "numerator") and hasattr(val, "denominator"):
+                return float(val.numerator) / float(val.denominator) if val.denominator != 0 else 0.0
+            return float(val)
+        d = to_float(ratio_tuple[0])
+        m = to_float(ratio_tuple[1])
+        s = to_float(ratio_tuple[2])
+        decimal = d + (m / 60.0) + (s / 3600.0)
+        if ref in ['S', 'W']:
+            decimal = -decimal
+        return decimal
+    except Exception:
+        return None
+
+def get_station_coords(station):
+    try:
+        station_num = int(re.search(r"\d+", station).group(0))
+        station_coords = {
+            1: (21.650, 79.201),
+            2: (21.661, 79.215),
+            3: (21.642, 79.220),
+            4: (21.655, 79.190),
+            5: (21.648, 79.230),
+            6: (21.675, 79.240),
+            7: (21.668, 79.225),
+            8: (21.658, 79.250),
+        }
+        if station_num in station_coords:
+            return station_coords[station_num]
+        else:
+            sh = int(hashlib.md5(station.encode()).hexdigest(), 16)
+            lat = 21.60 + (sh % 100) / 100.0 * 0.10
+            lon = 79.20 + ((sh // 100) % 100) / 100.0 * 0.10
+            return lat, lon
+    except:
+        return None, None
+
+def get_image_telemetry(file_path):
     """
-    Generates deterministic GPS, timestamp, and camera trap station metadata 
-    from an image filename. Useful for hackathon reproducibility and mapping.
+    Extracts telemetry (station, timestamp, coordinates) from image EXIF metadata.
+    If no EXIF data exists, checks path for station subfolders and falls back
+    to deterministic filename hashing to keep test datasets working.
     """
+    filename = os.path.basename(file_path)
+    
+    # --- Fallback calculations (hashing filename) ---
     h = int(hashlib.md5(filename.encode()).hexdigest(), 16)
+    fallback_lat = 21.55 + (h % 1000) / 1000.0 * 0.20
+    fallback_lon = 79.15 + ((h // 1000) % 1000) / 1000.0 * 0.20
+    fallback_station_id = (h // 1000000) % 20 + 1
+    fallback_station = f"STATION_A{fallback_station_id:02d}"
     
-    # Pench Tiger Reserve boundaries: Lat [21.55, 21.75], Lon [79.15, 79.35]
-    lat = 21.55 + (h % 1000) / 1000.0 * 0.20
-    lon = 79.15 + ((h // 1000) % 1000) / 1000.0 * 0.20
-    
-    # Stations: STATION_A01 to STATION_A20
-    station_id = (h // 1000000) % 20 + 1
-    station = f"STATION_A{station_id:02d}"
-    
-    # Timestamp: recent times (August 2026)
     day = 1 + (h % 15)
     hour = (h // 15) % 24
     minute = (h // 360) % 60
-    timestamp = f"2026-08-{day:02d}T{hour:02d}:{minute:02d}:00Z"
+    fallback_timestamp = f"2026-08-{day:02d}T{hour:02d}:{minute:02d}:00Z"
     
+    # Check folder matching first in case file is absent or EXIF is empty
+    station_match = re.search(r"STATION_A\d+", file_path, re.IGNORECASE)
+    station = station_match.group(0).upper() if station_match else None
+    
+    lat, lon = None, None
+    if station:
+        lat, lon = get_station_coords(station)
+        
+    if not os.path.exists(file_path):
+        # File doesn't exist, return parsed station if found, else hash fallback
+        if station and lat and lon:
+            return station, fallback_timestamp, lat, lon
+        return fallback_station, fallback_timestamp, fallback_lat, fallback_lon
+        
+    # File exists, try reading EXIF GPS and DateTimeOriginal
+    timestamp = None
+    try:
+        with Image.open(file_path) as img:
+            exif_raw = img._getexif()
+            if exif_raw:
+                exif = {TAGS.get(k, k): v for k, v in exif_raw.items()}
+                
+                # Check EXIF Timestamp
+                dt_str = exif.get("DateTimeOriginal") or exif.get("DateTime")
+                if dt_str:
+                    try:
+                        dt = datetime.strptime(dt_str, "%Y:%m:%d %H:%M:%S")
+                        timestamp = dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+                    except:
+                        pass
+                
+                # Check EXIF GPS Coordinates (overrides folder-name default coordinates)
+                gps_info_raw = exif.get("GPSInfo")
+                if gps_info_raw:
+                    gps_info = {GPSTAGS.get(k, k): v for k, v in gps_info_raw.items()}
+                    if "GPSLatitude" in gps_info and "GPSLongitude" in gps_info:
+                        lat_val = convert_to_decimal(gps_info["GPSLatitude"], gps_info.get("GPSLatitudeRef", "N"))
+                        lon_val = convert_to_decimal(gps_info["GPSLongitude"], gps_info.get("GPSLongitudeRef", "E"))
+                        if lat_val is not None and lon_val is not None:
+                            lat = lat_val
+                            lon = lon_val
+    except Exception as e:
+        print(f"Error reading EXIF metadata for {filename}: {e}")
+            
+    # 4. Apply Final Fallbacks
+    if lat is None or lon is None:
+        lat = fallback_lat
+        lon = fallback_lon
+        
+    if station is None:
+        # If we got GPS from EXIF, format a custom coordinate station tag
+        if lat != fallback_lat or lon != fallback_lon:
+            station = f"EXIF_GPS_{int(lat*1000)}_{int(lon*1000)}"
+        else:
+            station = fallback_station
+            
+    if timestamp is None:
+        timestamp = fallback_timestamp
+        
     return station, timestamp, lat, lon
 
 @app.get("/system_stats")
@@ -114,7 +214,7 @@ async def upload_image(file: UploadFile = File(...)):
         shutil.copyfileobj(file.file, buffer)
         
     # Get telemetry deterministically
-    station, timestamp, lat, lon = get_image_telemetry(file.filename)
+    station, timestamp, lat, lon = get_image_telemetry(file_path)
     
     # --- TASK 1: Triage ---
     has_animal, bbox = process_triage(file_path)
@@ -169,6 +269,7 @@ async def upload_image(file: UploadFile = File(...)):
             confidence=round(1.0 - distance, 4),
             embedding=embedding
         )
+        invalidate_territory_cache(tiger_id)
     except Exception as e:
         print(f"Error saving capture in DB: {e}")
     
@@ -304,7 +405,7 @@ async def bulk_triage(req: BulkTriageRequest):
         has_animal, bbox = process_triage(filepath, req.confidence_threshold)
         
         # Get metadata deterministically
-        station, timestamp, lat, lon = get_image_telemetry(filename)
+        station, timestamp, lat, lon = get_image_telemetry(filepath)
         
         if not has_animal:
             # Safe delete (move to quarantine)
@@ -364,6 +465,7 @@ async def bulk_triage(req: BulkTriageRequest):
                     confidence=round(1.0 - distance, 4),
                     embedding=embedding
                 )
+                invalidate_territory_cache(tiger_id)
                 
                 # Trigger alerts check
                 try:
