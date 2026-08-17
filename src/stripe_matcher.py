@@ -9,11 +9,23 @@ import os
 import json
 import cv2
 
-print("Loading ResNet50 and FAISS Index into server memory...")
-# 1. Initialize Deep Learning Model Globally
-weights = models.ResNet50_Weights.IMAGENET1K_V2
-resnet = models.resnet50(weights=weights)
-model = nn.Sequential(*list(resnet.children())[:-1])
+# 1. Initialize Deep Learning Model (Fine-tuned Metric Learning or Pre-trained Fallback)
+WEIGHTS_PATH = "tiger_stripe_resnet50.pth"
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+if os.path.exists(WEIGHTS_PATH):
+    print(f"Loading custom fine-tuned Tiger Stripe Model from '{WEIGHTS_PATH}' on {device}...")
+    resnet = models.resnet50(weights=None)
+    model = nn.Sequential(*list(resnet.children())[:-1])
+    state_dict = torch.load(WEIGHTS_PATH, map_location=device)
+    model.load_state_dict(state_dict)
+else:
+    print(f"Loading ImageNet pre-trained ResNet50 (Fine-tuned '{WEIGHTS_PATH}' not found, using baseline)...")
+    weights = models.ResNet50_Weights.IMAGENET1K_V2
+    resnet = models.resnet50(weights=weights)
+    model = nn.Sequential(*list(resnet.children())[:-1])
+
+model.to(device)
 model.eval()
 
 transform = transforms.Compose([
@@ -134,12 +146,12 @@ def extract_features(image_path, bbox=None):
     # Task 2: Stripe Extraction Enhancement
     preprocessed_flank = preprocess_stripes(flank)
     
-    tensor = transform(preprocessed_flank).unsqueeze(0)
+    tensor = transform(preprocessed_flank).unsqueeze(0).to(device)
     
     with torch.no_grad():
         features = model(tensor)
         
-    vector = features.squeeze().numpy()
+    vector = features.squeeze().cpu().numpy()
     
     # Normalize features for cosine similarity (L2 distance on normalized vectors = Cosine)
     norm = np.linalg.norm(vector)
