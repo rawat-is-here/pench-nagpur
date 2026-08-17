@@ -303,6 +303,10 @@ export default function LiveMap() {
               const centroid = t.centroid;
               const radiusMeters = t.radius_meters || 1200;
 
+              if (!centroid || !t.capture_points || t.capture_points.length === 0) {
+                return null;
+              }
+
               return (
                 <React.Fragment key={t.tiger_id}>
                   {/* A. HOME RANGE MINIMUM CONVEX POLYGON */}

@@ -93,10 +93,19 @@ export default function Tigers() {
       </div>
 
       {/* 30 TIGERS CARD GRID */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
-        {filtered.map((t) => {
-          const color = getTigerColor(t.tiger_id);
-          const firstImage = t.capture_points && t.capture_points.length > 0 ? t.capture_points[0].image_name : `${t.tiger_id}_1.jpg`;
+      {filtered.length === 0 ? (
+        <div className="panel p-12 text-center space-y-3">
+          <Fingerprint size={36} className="mx-auto text-slate-300" />
+          <h3 className="text-forest-950 font-extrabold text-base">No Tigers Enrolled in Database Yet</h3>
+          <p className="text-xs text-slate-500 max-w-md mx-auto">
+            Upload raw camera trap frames via the Command Center. The AI pipeline will extract EXIF location data, isolate stripes, and dynamically enroll resident tigers.
+          </p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+          {filtered.map((t) => {
+            const color = getTigerColor(t.tiger_id);
+            const firstImage = t.capture_points && t.capture_points.length > 0 ? t.capture_points[0].image_name : `${t.tiger_id}_1.jpg`;
 
           return (
             <div
@@ -162,7 +171,8 @@ export default function Tigers() {
             </div>
           );
         })}
-      </div>
+        </div>
+      )}
 
       {/* DETAIL MODAL */}
       {selectedTiger && (

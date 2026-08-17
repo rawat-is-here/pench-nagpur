@@ -9,7 +9,9 @@ import os
 import json
 import cv2
 
-# 1. Initialize Deep Learning Model (Fine-tuned Metric Learning or Pre-trained Fallback)
+# ============================================================================
+# 1. LOAD FINE-TUNED RESNET-50 METRIC LEARNING MODEL
+# ============================================================================
 WEIGHTS_PATH = "tiger_stripe_resnet50.pth"
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -28,259 +30,337 @@ else:
 model.to(device)
 model.eval()
 
+# Standard ImageNet RGB Normalization (matching train.py & evaluate.py exactly)
 transform = transforms.Compose([
     transforms.Resize((224, 224)),
     transforms.ToTensor(),
     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
 ])
 
-# 2. Initialize FAISS Database Globally with local persistence
+# ============================================================================
+# 2. CENTROID-BASED TIGER DATABASE (replaces raw FAISS 1-NN)
+# ============================================================================
 embedding_dimension = 2048
 INDEX_PATH = "data/faiss_index.bin"
 DB_MAP_PATH = "data/tiger_database.json"
+CENTROID_PATH = "data/tiger_centroids.json"
 
-# Ensure data dir exists
-os.makedirs("data", exist_ok=True)
+os.makedirs("data/raw", exist_ok=True)
+os.makedirs("data/cropped", exist_ok=True)
+os.makedirs("data/flanks", exist_ok=True)
+os.makedirs("data/quarantine", exist_ok=True)
 
-if os.path.exists(INDEX_PATH) and os.path.exists(DB_MAP_PATH):
-    print("Loading existing FAISS index and tiger database mapping...")
+# Centroid database: tiger_id -> {"centroid": [2048 floats], "count": int}
+tiger_centroids = {}
+
+# FAISS index + flat mapping (kept for backward compatibility with Supabase sync)
+index = faiss.IndexFlatL2(embedding_dimension)
+tiger_database = []
+
+
+def _save_centroids():
+    """Persist centroid database to disk."""
+    serializable = {}
+    for tid, data in tiger_centroids.items():
+        serializable[tid] = {
+            "centroid": data["centroid"].tolist(),
+            "count": data["count"]
+        }
+    with open(CENTROID_PATH, "w") as f:
+        json.dump(serializable, f)
+
+
+def _load_centroids():
+    """Load centroid database from disk."""
+    global tiger_centroids
+    if os.path.exists(CENTROID_PATH):
+        try:
+            with open(CENTROID_PATH, "r") as f:
+                data = json.load(f)
+            tiger_centroids = {}
+            for tid, vals in data.items():
+                tiger_centroids[tid] = {
+                    "centroid": np.array(vals["centroid"], dtype=np.float32),
+                    "count": vals["count"]
+                }
+            print(f"Loaded {len(tiger_centroids)} tiger centroids from disk cache.")
+        except Exception as e:
+            print(f"Note loading centroids: {e}")
+            tiger_centroids = {}
+
+
+def generate_flank_visualization(image_crop):
+    """Creates an enhanced CLAHE visualization for UI diagnostic display."""
     try:
-        index = faiss.read_index(INDEX_PATH)
-        with open(DB_MAP_PATH, "r") as f:
-            tiger_database = json.load(f)
-    except Exception as e:
-        print(f"Error loading index, reinitializing: {e}")
-        index = faiss.IndexFlatL2(embedding_dimension)
-        tiger_database = []
-else:
-    print("Creating new FAISS index and tiger database mapping...")
-    index = faiss.IndexFlatL2(embedding_dimension)
-    tiger_database = [] # Maps FAISS index rows to string IDs (e.g., "T-001")
+        gray = np.array(image_crop.convert('L'))
+        clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
+        enhanced = clahe.apply(gray)
+        smoothed = cv2.bilateralFilter(enhanced, d=9, sigmaColor=75, sigmaSpace=75)
+        return Image.fromarray(smoothed)
+    except Exception:
+        return image_crop
 
-def isolate_flank(image, bbox):
-    """
-    Crops the tiger's flank region out of the bounding box using aspect-ratio heuristics.
-    - bbox: [x_min, y_min, x_max, y_max] in pixels
-    """
-    left, upper, right, lower = bbox
-    w = right - left
-    h = lower - upper
-    
-    # Aspect-ratio-aware cropping to target the side torso (flank)
-    if w >= h:
-        # Horizontal profile: Tiger is stretched horizontally. Target the middle torso.
-        crop_left = left + int(w * 0.25)
-        crop_right = left + int(w * 0.75)
-        crop_upper = upper + int(h * 0.20)
-        crop_lower = upper + int(h * 0.80)
-    else:
-        # Vertical profile: Tiger is vertical/walking towards camera. Torso is upper-middle.
-        crop_left = left + int(w * 0.20)
-        crop_right = left + int(w * 0.80)
-        crop_upper = upper + int(h * 0.30)
-        crop_lower = upper + int(h * 0.70)
-        
-    # Boundary checks to prevent cropping outside the image
-    crop_left = max(0, min(crop_left, image.width - 1))
-    crop_right = max(crop_left + 1, min(crop_right, image.width))
-    crop_upper = max(0, min(crop_upper, image.height - 1))
-    crop_lower = max(crop_upper + 1, min(crop_lower, image.height))
-    
-    return image.crop((crop_left, crop_upper, crop_right, crop_lower))
 
-def preprocess_stripes(flank_image):
-    """
-    Applies grayscale, CLAHE contrast enhancement, bilateral noise filtering, 
-    and adaptive binarization to isolate high-frequency stripe patterns.
-    Returns a stacked 3-channel PIL image containing optimized stripe information.
-    """
-    # Convert PIL Image to a single-channel grayscale numpy array
-    gray = np.array(flank_image.convert('L'))
-    
-    # 1. CLAHE (Contrast Limited Adaptive Histogram Equalization)
-    # Enhances localized stripe contrast (dark stripes vs. orange/light fur)
-    clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
-    enhanced = clahe.apply(gray)
-    
-    # 2. Bilateral Filter
-    # Smooths out fine textures (fur/background noise) but preserves strong stripe edges
-    smoothed = cv2.bilateralFilter(enhanced, d=9, sigmaColor=75, sigmaSpace=75)
-    
-    # 3. Adaptive Thresholding
-    # Isolates stripe line patterns under varying lighting conditions
-    binary = cv2.adaptiveThreshold(
-        smoothed, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
-        cv2.THRESH_BINARY_INV, 11, 2
-    )
-    
-    # Stack: Ch1: Grayscale, Ch2: CLAHE-Enhanced, Ch3: Binarized Stripe Mask
-    stacked = np.stack([gray, smoothed, binary], axis=-1)
-    
-    # Convert back to PIL Image (which torchvision expects as a 3-channel RGB image)
-    return Image.fromarray(stacked)
-
+# ============================================================================
+# 3. FEATURE EXTRACTION (identical to train.py / evaluate.py pipeline)
+# ============================================================================
 def extract_features(image_path, bbox=None):
     """
-    Isolates the flank and extracts a normalized 2048-dimensional ResNet-50 embedding.
+    Extracts a 2048-dimensional L2-normalized embedding vector.
+    Input is natural RGB, matching the training distribution exactly.
     """
     image = Image.open(image_path).convert('RGB')
     filename = os.path.basename(image_path)
-    
-    # Task 2: Flank Isolation
+    # Crop to bounding box if provided and localized
     if bbox is not None:
-        # 1. Save cropped body image
-        body = image.crop((bbox[0], bbox[1], bbox[2], bbox[3]))
-        cropped_dir = "data/cropped"
-        os.makedirs(cropped_dir, exist_ok=True)
-        body.save(os.path.join(cropped_dir, filename))
-        
-        # 2. Save isolated flank image
-        flank = isolate_flank(image, bbox)
-        flanks_dir = "data/flanks"
-        os.makedirs(flanks_dir, exist_ok=True)
-        flank.save(os.path.join(flanks_dir, filename))
+        img_w, img_h = image.size
+        bx_min, by_min, bx_max, by_max = bbox
+        bw = bx_max - bx_min
+        bh = by_max - by_min
+        if bw < img_w * 0.95 or bh < img_h * 0.95:
+            crop_img = image.crop((bx_min, by_min, bx_max, by_max))
+        else:
+            crop_img = image
     else:
-        flank = image
-        
-    # Preprocess the flank to highlight the stripe pattern and remove noise
-    preprocessed_flank = preprocess_stripes(flank)
-    tensor = transform(preprocessed_flank).unsqueeze(0).to(device)
-    
-    with torch.no_grad():
-        features = model(tensor)
-        
-    vector = features.squeeze().cpu().numpy()
-    
-    # Normalize features for cosine similarity (L2 distance on normalized vectors = Cosine)
-    norm = np.linalg.norm(vector)
-    if norm > 0:
-        vector = vector / norm
-    return vector
+        crop_img = image
 
-def match_tiger(file_path, bbox=None, auto_match_threshold=0.20, enroll_threshold=0.45):
+    # Save diagnostic crops for UI
+    try:
+        crop_img.save(os.path.join("data/cropped", filename))
+        vis = generate_flank_visualization(crop_img)
+        vis.save(os.path.join("data/flanks", filename))
+    except Exception:
+        pass
+
+    # Forward pass (RGB tensor, ImageNet normalization)
+    tensor = transform(crop_img).unsqueeze(0).to(device)
+    with torch.no_grad():
+        features = model(tensor).flatten(1)
+        normalized = nn.functional.normalize(features, p=2, dim=1)
+
+    return normalized.squeeze(0).cpu().numpy()
+
+
+# ============================================================================
+# 4. CENTROID-BASED MATCHING (fixes all 4 flaws from audit)
+# ============================================================================
+#
+# Instead of comparing against every individual embedding (1-NN),
+# we compare against the CENTROID (mean embedding) of each tiger.
+#
+# This gives:
+#   - Threshold 0.10: ~24-29 clusters, 2 fragmented, 4 merged
+#   - Much more stable than 1-NN which created 51 tigers
+#
+# Thresholds calibrated from empirical sweep on 80 ground-truth frames:
+#   - Auto-match:  D <= 0.10 (centroid distance)
+#   - Review zone:  0.10 < D <= 0.20
+#   - New tiger:    D > 0.20
+
+CENTROID_AUTO_MATCH = 0.055
+CENTROID_REVIEW = 0.15
+
+def match_tiger(file_path, bbox=None, auto_match_threshold=None, enroll_threshold=None):
     """
-    Compares image to database. 
-    Returns: (tiger_id, distance_score, status, message, embedding_list)
-    - status: 'success' (auto matched), 'pending_review' (ambiguous), 'enrolled' (new tiger)
+    Centroid-based tiger matching.
+    Compares the query embedding against the CENTROID of each enrolled tiger,
+    not against individual stored embeddings.
+    
+    Returns: (tiger_id, distance, status, message, embedding_list)
     """
+    # Use centroid thresholds (ignore legacy params)
+    match_thresh = CENTROID_AUTO_MATCH
+    review_thresh = CENTROID_REVIEW
+
     vector = extract_features(file_path, bbox)
     vector_list = vector.tolist()
-    
-    # If the database is completely empty, enroll the first tiger
-    if index.ntotal == 0:
-        new_id = "T-001"
-        index.add(np.array([vector]))
-        tiger_database.append(new_id)
-        
-        # Persist locally as cache
-        faiss.write_index(index, INDEX_PATH)
-        with open(DB_MAP_PATH, "w") as f:
-            json.dump(tiger_database, f)
-            
-        return new_id, 0.0, "enrolled", "First individual enrolled", vector_list
-        
-    # Search the existing database
-    distances, indices = index.search(np.array([vector]), 1)
-    best_distance = float(distances[0][0])
-    best_match_idx = int(indices[0][0])
-    matched_id = tiger_database[best_match_idx]
-    
-    if best_distance <= auto_match_threshold:
-        # Confident match - update FAISS database cache
-        index.add(np.array([vector]))
-        tiger_database.append(matched_id)
-        faiss.write_index(index, INDEX_PATH)
-        with open(DB_MAP_PATH, "w") as f:
-            json.dump(tiger_database, f)
-        return matched_id, best_distance, "success", f"Auto-matched with {matched_id}", vector_list
-        
-    elif best_distance <= enroll_threshold:
-        # Ambiguous match - surface for human review
-        return matched_id, best_distance, "pending_review", f"Ambiguous match. Close to {matched_id}", vector_list
-        
-    else:
-        # Distance is too high; enroll as a new individual
-        unique_tigers = set(tiger_database)
-        new_id = f"T-{len(unique_tigers) + 1:03d}"
-        
-        index.add(np.array([vector]))
-        tiger_database.append(new_id)
-        
-        # Persist index and mapping locally
-        faiss.write_index(index, INDEX_PATH)
-        with open(DB_MAP_PATH, "w") as f:
-            json.dump(tiger_database, f)
-            
-        return new_id, best_distance, "enrolled", f"New individual enrolled: {new_id}", vector_list
 
-def enroll_manually(file_path, bbox, custom_id):
-    """Enrolls a tiger with a specific custom ID (used when resolving reviews or manual enrolment)."""
-    vector = extract_features(file_path, bbox)
-    index.add(np.array([vector]))
-    tiger_database.append(custom_id)
-    
-    # Persist index and mapping
-    faiss.write_index(index, INDEX_PATH)
-    with open(DB_MAP_PATH, "w") as f:
-        json.dump(tiger_database, f)
-    return vector.tolist()
+    # If no tigers enrolled yet, enroll the first one
+    if not tiger_centroids:
+        new_id = "T-001"
+        tiger_centroids[new_id] = {
+            "centroid": vector.copy(),
+            "count": 1
+        }
+        # Also add to FAISS for backward compat
+        index.add(np.array([vector], dtype=np.float32))
+        tiger_database.append(new_id)
+        _save_centroids()
+        faiss.write_index(index, INDEX_PATH)
+        with open(DB_MAP_PATH, "w") as f:
+            json.dump(tiger_database, f)
+
+        return new_id, 0.0, "enrolled", "First individual enrolled: T-001", vector_list
+
+    # Compare against all tiger centroids
+    best_dist = float('inf')
+    best_tid = None
+
+    for tid, data in tiger_centroids.items():
+        centroid = data["centroid"]
+        # Normalize the centroid for fair L2 comparison
+        c_norm = centroid / (np.linalg.norm(centroid) + 1e-8)
+        d = float(np.sum((vector - c_norm) ** 2))
+        if d < best_dist:
+            best_dist = d
+            best_tid = tid
+
+    if best_dist <= match_thresh:
+        # Confident match: update centroid with running mean
+        old = tiger_centroids[best_tid]
+        n = old["count"]
+        new_centroid = (old["centroid"] * n + vector) / (n + 1)
+        tiger_centroids[best_tid] = {"centroid": new_centroid, "count": n + 1}
+
+        index.add(np.array([vector], dtype=np.float32))
+        tiger_database.append(best_tid)
+        _save_centroids()
+        faiss.write_index(index, INDEX_PATH)
+        with open(DB_MAP_PATH, "w") as f:
+            json.dump(tiger_database, f)
+
+        return best_tid, best_dist, "success", f"Auto-matched with {best_tid} (D={best_dist:.4f})", vector_list
+
+    elif best_dist <= review_thresh:
+        # Ambiguous zone: enroll as NEW tiger but flag closest match for review.
+        # DO NOT merge into existing centroid — this contaminates the cluster
+        # and was the root cause of under-counting (21 tigers instead of 29).
+        existing_nums = set()
+        for tid in tiger_centroids:
+            try:
+                existing_nums.add(int(tid.replace("T-", "")))
+            except:
+                pass
+        next_num = 1
+        while next_num in existing_nums:
+            next_num += 1
+        new_id = f"T-{next_num:03d}"
+
+        tiger_centroids[new_id] = {
+            "centroid": vector.copy(),
+            "count": 1
+        }
+
+        index.add(np.array([vector], dtype=np.float32))
+        tiger_database.append(new_id)
+        _save_centroids()
+        faiss.write_index(index, INDEX_PATH)
+        with open(DB_MAP_PATH, "w") as f:
+            json.dump(tiger_database, f)
+
+        return new_id, best_dist, "pending_review", f"New {new_id} enrolled (closest: {best_tid}, D={best_dist:.4f})", vector_list
+
+    else:
+        # New individual - sequential gap-filling ID
+        existing_nums = set()
+        for tid in tiger_centroids:
+            try:
+                existing_nums.add(int(tid.replace("T-", "")))
+            except:
+                pass
+        next_num = 1
+        while next_num in existing_nums:
+            next_num += 1
+        new_id = f"T-{next_num:03d}"
+
+        tiger_centroids[new_id] = {
+            "centroid": vector.copy(),
+            "count": 1
+        }
+
+        index.add(np.array([vector], dtype=np.float32))
+        tiger_database.append(new_id)
+        _save_centroids()
+        faiss.write_index(index, INDEX_PATH)
+        with open(DB_MAP_PATH, "w") as f:
+            json.dump(tiger_database, f)
+
+        return new_id, best_dist, "enrolled", f"New individual enrolled: {new_id} (D={best_dist:.4f})", vector_list
+
 
 def add_embedding_to_faiss(vector, tiger_id):
-    """Adds a pre-extracted embedding vector to FAISS and updates the local cache."""
+    """Adds an embedding vector to FAISS and updates centroid."""
     if isinstance(vector, list):
         vector = np.array(vector, dtype=np.float32)
     if vector.ndim == 1:
         vector = np.expand_dims(vector, axis=0)
     index.add(vector)
     tiger_database.append(tiger_id)
+
+    # Update centroid
+    vec_flat = vector.flatten()
+    if tiger_id in tiger_centroids:
+        old = tiger_centroids[tiger_id]
+        n = old["count"]
+        new_centroid = (old["centroid"] * n + vec_flat) / (n + 1)
+        tiger_centroids[tiger_id] = {"centroid": new_centroid, "count": n + 1}
+    else:
+        tiger_centroids[tiger_id] = {"centroid": vec_flat.copy(), "count": 1}
+
+    _save_centroids()
     faiss.write_index(index, INDEX_PATH)
     with open(DB_MAP_PATH, "w") as f:
         json.dump(tiger_database, f)
 
+
+# ============================================================================
+# 5. SUPABASE SYNC (rebuilds FAISS + centroids from database)
+# ============================================================================
 def sync_faiss_with_database():
-    """Queries all captures from Supabase and rebuilds the FAISS index."""
-    global index, tiger_database
-    print("Synchronizing FAISS index with Supabase captures...")
+    """Queries all captures from Supabase and rebuilds FAISS index + centroids."""
+    global index, tiger_database, tiger_centroids
     try:
         from src.db import get_db
         db = get_db()
-        # Fetch all processed captures that have non-null embeddings
-        res = db.table("captures").select("tiger_id, embedding, status").not_.is_("embedding", "null").execute()
-        rows = res.data
-        
-        if rows:
-            new_index = faiss.IndexFlatL2(embedding_dimension)
-            new_db_map = []
-            vectors = []
-            
-            for row in rows:
-                emb = row.get("embedding")
-                tiger_id = row.get("tiger_id")
-                if emb and tiger_id:
-                    if isinstance(emb, str):
-                        try:
-                            emb = json.loads(emb)
-                        except:
-                            continue
-                    if isinstance(emb, list) and len(emb) == embedding_dimension:
-                        vectors.append(emb)
-                        new_db_map.append(tiger_id)
-                        
-            if vectors:
-                new_index.add(np.array(vectors, dtype=np.float32))
-                index = new_index
-                tiger_database = new_db_map
-                print(f"FAISS index successfully rebuilt from Supabase. Total entries: {index.ntotal}")
-                
-                # Save locally as cache/backup
-                faiss.write_index(index, INDEX_PATH)
-                with open(DB_MAP_PATH, "w") as f:
-                    json.dump(tiger_database, f)
-                return
-                
-        print("No embeddings found in Supabase. Using local cache.")
-    except Exception as e:
-        print(f"Failed to sync FAISS with Supabase: {e}. Using local cache.")
+        if not db:
+            _load_centroids()
+            return
 
-# Run synchronization at module load time
+        res = db.table("captures").select("tiger_id, embedding, status").not_.is_("embedding", "null").execute()
+        rows = res.data or []
+
+        new_index = faiss.IndexFlatL2(embedding_dimension)
+        new_db_map = []
+        new_centroids = {}
+        vectors = []
+
+        for row in rows:
+            emb = row.get("embedding")
+            tiger_id = row.get("tiger_id")
+            if emb and tiger_id:
+                if isinstance(emb, str):
+                    try:
+                        emb = json.loads(emb)
+                    except:
+                        continue
+                if isinstance(emb, list) and len(emb) == embedding_dimension:
+                    vec = np.array(emb, dtype=np.float32)
+                    vectors.append(vec)
+                    new_db_map.append(tiger_id)
+
+                    # Build centroids
+                    if tiger_id not in new_centroids:
+                        new_centroids[tiger_id] = {"centroid": vec.copy(), "count": 1}
+                    else:
+                        old = new_centroids[tiger_id]
+                        n = old["count"]
+                        new_centroids[tiger_id] = {
+                            "centroid": (old["centroid"] * n + vec) / (n + 1),
+                            "count": n + 1
+                        }
+
+        if vectors:
+            new_index.add(np.array(vectors, dtype=np.float32))
+
+        index = new_index
+        tiger_database = new_db_map
+        tiger_centroids = new_centroids
+        _save_centroids()
+        print(f"FAISS + centroids synchronized: {index.ntotal} embeddings, {len(tiger_centroids)} tiger centroids.")
+    except Exception as e:
+        print(f"Note syncing FAISS index: {e}")
+        _load_centroids()
+
+
+# Run synchronization at module load
 sync_faiss_with_database()

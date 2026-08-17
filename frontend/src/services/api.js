@@ -33,9 +33,14 @@ export const resolveReview = (data) => api.post('/resolve_review', data);
 export const getQuarantinedImages = () => api.get('/quarantined_images');
 export const restoreQuarantine = (filename) => api.post(`/restore_quarantine/${filename}`);
 
-// Image Upload & Ingestion
+// Image Upload & Ingestion (Single & Bulk)
 export const uploadCameraTrap = (formData) =>
   api.post('/upload_camera_trap', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+
+export const uploadCameraTrapsBulk = (formData) =>
+  api.post('/upload_camera_traps_bulk', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
   });
 

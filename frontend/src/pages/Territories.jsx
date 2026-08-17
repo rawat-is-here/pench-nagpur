@@ -189,6 +189,10 @@ export default function Territories() {
                 const centroid = t.centroid;
                 const radiusM = t.radius_meters || 1200;
 
+                if (!centroid || !t.capture_points || t.capture_points.length === 0) {
+                  return null;
+                }
+
                 return (
                   <React.Fragment key={t.tiger_id}>
                     {/* POLYGON */}

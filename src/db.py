@@ -23,11 +23,11 @@ def get_db():
 def enroll_tiger(tiger_id: str, name: str = None):
     """Enrolls a new tiger in the tigers database."""
     if not supabase:
-        return [{"id": tiger_id, "name": name or f"Tiger {tiger_id}"}]
+        return []
     try:
         data = {"id": tiger_id, "name": name or f"Tiger {tiger_id}"}
         response = supabase.table("tigers").upsert(data).execute()
-        return response.data
+        return response.data or []
     except Exception as e:
         print(f"[DB Error] enroll_tiger: {e}")
         return []
@@ -35,7 +35,7 @@ def enroll_tiger(tiger_id: str, name: str = None):
 def get_tiger(tiger_id: str):
     """Retrieves a tiger record by ID."""
     if not supabase:
-        return {"id": tiger_id, "name": f"Tiger {tiger_id}"}
+        return None
     try:
         response = supabase.table("tigers").select("*").eq("id", tiger_id).execute()
         return response.data[0] if response.data else None
@@ -46,25 +46,30 @@ def get_tiger(tiger_id: str):
 def get_all_tigers():
     """Retrieves all tigers enrolled in the database."""
     if not supabase:
-        return [
-            {"id": "T-001", "name": "Tiger T-001 (Collar)"},
-            {"id": "T-002", "name": "Tiger T-002 (Collar)"},
-            {"id": "T-104", "name": "Tiger T-104 (Collar)"}
-        ]
+        return []
     try:
         response = supabase.table("tigers").select("*").execute()
-        return response.data
+        return response.data or []
     except Exception as e:
         print(f"[DB Error] get_all_tigers: {e}")
         return []
 
 # --- Captures Table Helper Functions ---
 
-def add_capture(tiger_id: str, image_path: str, station: str, timestamp: str, latitude: float, longitude: float, status: str, confidence: float, embedding = None):
-    """Logs a new camera trap capture."""
+def add_capture(tiger_id: str, image_path: str, station: str = None, timestamp: str = None, 
+                latitude: float = None, longitude: float = None, status: str = "processed", 
+                confidence: float = 1.0, embedding: list = None):
+    """Inserts a new camera trap capture, guaranteeing parent tiger exists."""
     if not supabase:
-        return [{"tiger_id": tiger_id, "status": status, "confidence": confidence}]
+        return []
     try:
+        # Guarantee parent tiger exists in tigers table to satisfy foreign key
+        if tiger_id:
+            try:
+                enroll_tiger(tiger_id, f"Resident Tiger {tiger_id}")
+            except Exception:
+                pass
+
         data = {
             "tiger_id": tiger_id,
             "image_path": image_path,
@@ -73,83 +78,104 @@ def add_capture(tiger_id: str, image_path: str, station: str, timestamp: str, la
             "latitude": latitude,
             "longitude": longitude,
             "status": status,
-            "confidence": confidence
+            "confidence": confidence,
+            "embedding": embedding
         }
-        if embedding is not None:
-            data["embedding"] = embedding
         response = supabase.table("captures").insert(data).execute()
-        return response.data
+        return response.data or []
     except Exception as e:
         print(f"[DB Error] add_capture: {e}")
         return []
 
 def get_captures_for_tiger(tiger_id: str):
-    """Fetches all captures for a specific tiger."""
+    """Retrieves all captures for a specific tiger."""
     if not supabase:
         return []
     try:
         response = supabase.table("captures").select("*").eq("tiger_id", tiger_id).execute()
-        return response.data
+        return response.data or []
     except Exception as e:
         print(f"[DB Error] get_captures_for_tiger: {e}")
         return []
 
 def get_all_captures():
-    """Fetches all captures."""
+    """Retrieves all captures from the database."""
     if not supabase:
         return []
     try:
         response = supabase.table("captures").select("*").execute()
-        return response.data
+        return response.data or []
     except Exception as e:
         print(f"[DB Error] get_all_captures: {e}")
         return []
 
 def get_pending_reviews():
-    """Fetches all captures pending human reviewer resolution."""
-    response = supabase.table("captures").select("*").eq("status", "pending_review").order("timestamp", desc=True).execute()
-    return response.data
+    """Retrieves all captures with status 'pending_review'."""
+    if not supabase:
+        return []
+    try:
+        response = supabase.table("captures").select("*").eq("status", "pending_review").order("id", desc=True).execute()
+        return response.data or []
+    except Exception as e:
+        print(f"[DB Error] get_pending_reviews: {e}")
+        return []
 
 def get_capture_by_id(capture_id: int):
-    """Retrieves a single capture by primary key ID."""
-    response = supabase.table("captures").select("*").eq("id", capture_id).execute()
-    return response.data[0] if response.data else None
+    """Retrieves a single capture by its ID."""
+    if not supabase:
+        return None
+    try:
+        response = supabase.table("captures").select("*").eq("id", capture_id).execute()
+        return response.data[0] if response.data else None
+    except Exception as e:
+        print(f"[DB Error] get_capture_by_id: {e}")
+        return None
 
-def update_capture_resolution(capture_id: int, tiger_id: str, status: str = "processed"):
-    """Updates the assigned tiger ID and status after human verification."""
-    data = {"status": status}
-    if tiger_id:
-        data["tiger_id"] = tiger_id
-    response = supabase.table("captures").update(data).eq("id", capture_id).execute()
-    return response.data
+def update_capture_resolution(capture_id: int, tiger_id: str, status: str):
+    """Updates a capture after human review resolution."""
+    if not supabase:
+        return []
+    try:
+        data = {
+            "tiger_id": tiger_id,
+            "status": status
+        }
+        response = supabase.table("captures").update(data).eq("id", capture_id).execute()
+        return response.data or []
+    except Exception as e:
+        print(f"[DB Error] update_capture_resolution: {e}")
+        return []
 
 # --- Alerts Table Helper Functions ---
 
-def add_alert(tiger_id: str, alert_type: str, severity: str, message: str, evidence: dict = None):
-    """Inserts a new deviation/trend alert."""
+def add_alert(tiger_id: str, alert_type: str, severity: str, message: str, station: str = None, 
+              latitude: float = None, longitude: float = None, timestamp: str = None):
+    """Creates a new spatial alert in the alerts table."""
     if not supabase:
-        return [{"id": 1, "tiger_id": tiger_id, "severity": severity, "message": message}]
+        return []
     try:
         data = {
             "tiger_id": tiger_id,
             "alert_type": alert_type,
             "severity": severity,
             "message": message,
-            "evidence": evidence or {}
+            "resolved": False
         }
+        if timestamp:
+            data["timestamp"] = timestamp
         response = supabase.table("alerts").insert(data).execute()
-        return response.data
+        return response.data or []
     except Exception as e:
         print(f"[DB Error] add_alert: {e}")
         return []
 
 def get_active_alerts():
-    """Retrieves all unresolved alerts, sorted by newest first."""
+    """Retrieves all unresolved alerts."""
     if not supabase:
         return []
     try:
-        response = supabase.table("alerts").select("*").eq("resolved", False).order("timestamp", desc=True).execute()
-        return response.data
+        response = supabase.table("alerts").select("*").eq("resolved", False).order("id", desc=True).execute()
+        return response.data or []
     except Exception as e:
         print(f"[DB Error] get_active_alerts: {e}")
         return []
@@ -157,10 +183,10 @@ def get_active_alerts():
 def resolve_alert(alert_id: int):
     """Marks an alert as resolved."""
     if not supabase:
-        return [{"id": alert_id, "resolved": True}]
+        return []
     try:
         response = supabase.table("alerts").update({"resolved": True}).eq("id", alert_id).execute()
-        return response.data
+        return response.data or []
     except Exception as e:
         print(f"[DB Error] resolve_alert: {e}")
         return []

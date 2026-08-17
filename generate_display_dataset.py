@@ -760,58 +760,7 @@ def main():
         
     print(f"Created 10 Quarantine slots in: {QUARANTINE_OUT_DIR}")
     
-    # --------------------------------------------------------------------------
-    # 3. EXPORT CSV & JSON CATALOGS
-    # --------------------------------------------------------------------------
-    print("\nExporting metadata catalogs...")
-    
-    # 3.1 metadata.csv (100 rows)
-    csv_path = os.path.join(OUTPUT_DIR, "metadata.csv")
-    csv_headers = list(all_metadata[0].keys())
-    with open(csv_path, "w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=csv_headers)
-        writer.writeheader()
-        writer.writerows(all_metadata)
-    print(f"Exported full metadata CSV ({len(all_metadata)} rows) -> {csv_path}")
-    
-    # 3.2 metadata.json (100 items)
-    json_path = os.path.join(OUTPUT_DIR, "metadata.json")
-    with open(json_path, "w", encoding="utf-8") as f:
-        json.dump(all_metadata, f, indent=2)
-    print(f"Exported metadata JSON ({len(all_metadata)} items) -> {json_path}")
-    
-    # 3.3 locations_90.csv (90 tiger locations)
-    loc_csv_path = os.path.join(OUTPUT_DIR, "locations_90.csv")
-    loc_headers = list(locations_90[0].keys())
-    with open(loc_csv_path, "w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=loc_headers)
-        writer.writeheader()
-        writer.writerows(locations_90)
-    print(f"Exported 90 Pench locations CSV ({len(locations_90)} rows) -> {loc_csv_path}")
-
-    # 3.4 README.md for dataset documentation
-    readme_path = os.path.join(OUTPUT_DIR, "README.md")
-    with open(readme_path, "w", encoding="utf-8") as f:
-        f.write("""# Pench Tiger Reserve Curated Display Dataset
-
-This dataset contains **100 curated camera-trap frames** configured for the **TerraStripe Pench Tiger Intelligence System**:
-- **90 Tiger Images (`tigers/`)**: 30 unique resident tigers (`T-001` through `T-030`), with 3 distinct flank/identification captures each.
-- **10 Quarantine Slots (`quarantine/`)**: Reserved for blanks, non-target species, or human intrusion frames for manual management.
-- **90 Territorially Clustered Locations (`locations_90.csv`)**: Authentic Pench Tiger Reserve coordinates grouped by home-range territories.
-- **Embedded EXIF Metadata**: Standard GPS (`GPSLatitude`, `GPSLongitude`, `GPSAltitude`), DateTime, Camera Make/Model, and Copyright embedded directly into each JPEG.
-- **Catalogs**: Complete `metadata.csv` and `metadata.json`.
-
-## Spatial Coverage
-- **Turia Core & Totladoh Reservoir (MP)**: `T-001` to `T-005`
-- **Karmajhiri Core & Bodanala (MP)**: `T-006` to `T-010`
-- **Jamtara & Chhindwara Core (MP)**: `T-011` to `T-014`
-- **Sillari Core & Ambabarwa (MH)**: `T-015` to `T-019`
-- **Kolitmara & Khursapar (MH)**: `T-020` to `T-024`
-- **Saleghat & Paoni Corridor (MH)**: `T-025` to `T-027`
-- **Rukhad Wildlife Corridor (MP)**: `T-028` to `T-030`
-""")
-    print(f"Exported dataset documentation -> {readme_path}")
-    print("\nDataset generation completed successfully!")
+    print("\nDataset generation completed successfully! All EXIF metadata is embedded directly into JPEG images.")
 
 if __name__ == "__main__":
     main()
