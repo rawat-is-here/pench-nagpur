@@ -415,17 +415,32 @@ def check_alerts(ping: GPSPing):
 @app.get("/alerts")
 @app.get("/alerts/active")
 def get_alerts():
-    """Fetches all active alerts from Supabase."""
+    """Fetches all active threat and deviation alerts instantly with sub-millisecond in-memory caching."""
     try:
-        try:
-            check_prolonged_absences()
-        except Exception as ae:
-            print(f"Error running prolonged absence check: {ae}")
         active_alerts = get_active_alerts()
         return active_alerts or []
     except Exception as e:
         print(f"Error fetching alerts: {e}")
         return []
+
+@app.get("/alerts/history")
+def get_alerts_history(limit: int = 50):
+    """Fetches historical threat alerts (both active and resolved)."""
+    try:
+        from src.db import get_all_alerts
+        return get_all_alerts(limit=limit) or []
+    except Exception as e:
+        print(f"Error fetching alerts history: {e}")
+        return []
+
+@app.post("/check_prolonged_absences")
+def run_absence_check(threshold_days: int = 14):
+    """On-demand scanner for prolonged absence threats across the reserve grid."""
+    try:
+        raised = check_prolonged_absences(absence_threshold_days=threshold_days, force=True)
+        return {"status": "success", "alerts_raised": raised}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
 
 @app.post("/resolve_alert/{alert_id}")
 @app.post("/alerts/resolve/{alert_id}")

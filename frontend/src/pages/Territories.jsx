@@ -6,7 +6,8 @@ import {
   Popup,
   Polygon,
   Circle,
-  CircleMarker
+  CircleMarker,
+  useMap
 } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import {
@@ -66,6 +67,49 @@ const createTigerCentroidIcon = (tigerId, color = '#c98222') => {
   });
 };
 
+function MapController({ center, zoom, territory, showAllOnMap, allTerritories }) {
+  const map = useMap();
+
+  useEffect(() => {
+    const invalidate = () => {
+      map.invalidateSize();
+    };
+
+    invalidate();
+    const t1 = setTimeout(invalidate, 50);
+    const t2 = setTimeout(invalidate, 200);
+    const t3 = setTimeout(invalidate, 500);
+    const t4 = setTimeout(invalidate, 1000);
+
+    window.addEventListener('resize', invalidate);
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+      clearTimeout(t3);
+      clearTimeout(t4);
+      window.removeEventListener('resize', invalidate);
+    };
+  }, [map]);
+
+  useEffect(() => {
+    map.invalidateSize();
+    if (showAllOnMap && allTerritories && allTerritories.length > 0) {
+      const points = allTerritories
+        .filter(t => t.centroid && t.centroid.lat && t.centroid.lon)
+        .map(t => [t.centroid.lat, t.centroid.lon]);
+      if (points.length > 0) {
+        map.fitBounds(L.latLngBounds(points), { padding: [40, 40], maxZoom: 12 });
+      }
+    } else if (territory && territory.polygon && territory.polygon.length >= 3) {
+      map.fitBounds(L.latLngBounds(territory.polygon), { padding: [50, 50], maxZoom: 14 });
+    } else if (center && center[0] && center[1]) {
+      map.setView(center, zoom || 13, { animate: true });
+    }
+  }, [center, zoom, territory, showAllOnMap, allTerritories, map]);
+
+  return null;
+}
+
 export default function Territories() {
   const [territories, setTerritories] = useState([]);
   const [overlaps, setOverlaps] = useState([]);
@@ -102,41 +146,36 @@ export default function Territories() {
 
   const activeTerritory = territories.find(t => t.tiger_id === selectedTigerId) || territories[0];
 
-  const totalArea = territories.reduce((acc, t) => acc + (t.core_area_sqkm || 0), 0);
-
   return (
     <div className="space-y-6">
-      {/* PAGE HEADING */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+      {/* Header telemetry summary */}
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
-          <div className="text-xs font-bold text-emerald-800 tracking-wider uppercase flex items-center gap-1.5">
+          <div className="flex items-center gap-2 text-xs font-mono text-emerald-800 uppercase tracking-widest">
             <Layers size={14} />
-            Spatial Ecology & Territorial Dynamics
+            <span>Spatial Ecology & Territorial Dynamics</span>
           </div>
-          <h1 className="text-2xl font-extrabold text-forest-950 tracking-tight">
+          <h1 className="text-2xl font-black text-forest-950 tracking-tight">
             Home Range & Centroid Patrol Radii
           </h1>
-          
         </div>
 
-        {/* STAT BADGES */}
         <div className="flex items-center gap-3">
-          <div className="bg-white border border-surface-border px-3.5 py-2 rounded-xl text-center shadow-sm">
+          <div className="badge-core bg-white border border-surface-border px-3.5 py-2 rounded-xl text-center shadow-sm">
             <div className="text-[10px] uppercase font-bold text-slate-500">Tracked Individuals</div>
             <div className="text-lg font-extrabold text-forest-950 font-mono">{territories.length}</div>
           </div>
-          <div className="bg-white border border-surface-border px-3.5 py-2 rounded-xl text-center shadow-sm">
-            <div className="text-[10px] uppercase font-bold text-slate-500">Total Core Range</div>
-            <div className="text-lg font-extrabold text-emerald-800 font-mono">{totalArea.toFixed(1)} km²</div>
+          <div className="badge-buffer bg-white border border-surface-border px-3.5 py-2 rounded-xl text-center shadow-sm">
+            <div className="text-[10px] uppercase font-bold text-slate-500">Boundary Overlaps</div>
+            <div className="text-lg font-extrabold text-emerald-800 font-mono">{overlaps.length}</div>
           </div>
         </div>
       </div>
 
-      {/* DUAL COLUMN: MAP & TERRITORY LIST */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* LEFT: INTERACTIVE GEOSPATIAL MAP */}
-        <div className="lg:col-span-7 panel overflow-hidden flex flex-col">
-          <div className="panel-header bg-slate-50 flex flex-wrap justify-between items-center gap-3 p-3">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Left Side: Interactive Map */}
+        <div className="lg:col-span-2 card p-0 overflow-hidden flex flex-col panel">
+          <div className="p-4 border-b border-surface-border bg-surface-subtle/50 flex items-center justify-between">
             <div className="panel-title text-xs font-bold flex items-center gap-2">
               <Compass size={16} className="text-emerald-700" />
               <span>
@@ -166,7 +205,7 @@ export default function Territories() {
             </div>
           </div>
 
-          <div style={{ height: '520px', width: '100%' }} className="relative bg-slate-100 flex-1">
+          <div style={{ height: '520px', minHeight: '520px', width: '100%' }} className="relative bg-slate-100 flex-1">
             <MapContainer
               center={
                 activeTerritory && activeTerritory.centroid
@@ -174,11 +213,25 @@ export default function Territories() {
                   : [21.655, 79.215]
               }
               zoom={showAllOnMap ? 11 : 13}
-              style={{ height: '100%', width: '100%' }}
+              style={{ height: '100%', minHeight: '520px', width: '100%' }}
             >
+              <MapController
+                center={
+                  activeTerritory && activeTerritory.centroid
+                    ? [activeTerritory.centroid.lat, activeTerritory.centroid.lon]
+                    : [21.655, 79.215]
+                }
+                zoom={showAllOnMap ? 11 : 13}
+                territory={activeTerritory}
+                showAllOnMap={showAllOnMap}
+                allTerritories={territories}
+              />
               <TileLayer
-                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                attribution='&copy; OpenStreetMap contributors'
+                url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
+                subdomains="abcd"
+                maxZoom={19}
+                keepBuffer={8}
+                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
               />
 
               {/* RENDER TARGET OR ALL TERRITORIES */}

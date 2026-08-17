@@ -86,6 +86,24 @@ def run_alerts_check(tiger_id, lat, lon, station, timestamp):
 
 
 
+    # 2. Check for first time capture at a new station ID
+    history_stations = {c.get("station") for c in history if c.get("station")}
+    if station and station not in history_stations:
+        is_curr_buffer = is_buffer_station(lat, lon)
+        severity = "WARNING" if is_curr_buffer else "INFO"
+        msg = f"FIRST-TIME STATION DETECTION: Tiger {tiger_id} recorded at {station} for the first time (Novel Corridor / Territorial Expansion)."
+        evidence = {
+            "first_time_station": station,
+            "total_stations_visited": len(history_stations) + 1,
+            "previous_stations": list(history_stations)[:5],
+            "is_buffer_zone": is_curr_buffer,
+            "location": {"lat": lat, "lon": lon}
+        }
+        try:
+            add_alert(tiger_id, "NEW_STATION_CAPTURE", severity, msg, evidence)
+        except Exception as e:
+            print(f"Error adding new station alert: {e}")
+
     # 3. Check for movement into/towards Buffer or Village-adjacent stations
     prev_capture = history[0]
     prev_lat, prev_lon = prev_capture.get("latitude"), prev_capture.get("longitude")
@@ -114,69 +132,106 @@ def run_alerts_check(tiger_id, lat, lon, station, timestamp):
         except Exception as e:
             print(f"Error adding village adjacent alert: {e}")
 
-def check_prolonged_absences(absence_threshold_days=14):
+_last_absence_check_time = None
+_cached_absence_alerts = []
+
+def check_prolonged_absences(absence_threshold_days=14, force=False):
     """
-    Scans all registered tigers and raises an alert if an individual
-    has not been captured anywhere in the reserve for > absence_threshold_days.
-    Distinguishes genuine disappearance from camera trap downtime.
+    High-performance batch scanner that identifies tigers not recorded across 
+    the sensor grid for > absence_threshold_days using optimized batch SQL queries.
     """
+    global _last_absence_check_time, _cached_absence_alerts
+    now = datetime.now(timezone.utc)
+    
+    # Throttle automatic execution to once every 2 minutes unless forced
+    if not force and _last_absence_check_time:
+        if (now - _last_absence_check_time).total_seconds() < 120:
+            return _cached_absence_alerts
+
     db = get_db()
     if not db:
         return []
         
     alerts_raised = []
     try:
-        tigers = get_all_tigers()
-        now = datetime.now(timezone.utc)
-        
-        for tiger in tigers:
-            t_id = tiger.get("id")
-            res = db.table("captures")\
-                    .select("station, timestamp, latitude, longitude")\
-                    .eq("tiger_id", t_id)\
-                    .eq("status", "processed")\
-                    .order("timestamp", desc=True)\
-                    .limit(1)\
-                    .execute()
-                    
-            if res.data and len(res.data) > 0:
-                last_cap = res.data[0]
-                ts_str = last_cap["timestamp"]
-                try:
-                    # Clean ISO format
-                    dt = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
-                    days_absent = (now - dt).days
-                    
-                    if days_absent >= absence_threshold_days:
-                        # Check if there is already an unresolved PROLONGED_ABSENCE alert for this tiger
-                        try:
-                            existing = db.table("alerts")\
-                                         .select("id")\
-                                         .eq("tiger_id", t_id)\
-                                         .eq("alert_type", "PROLONGED_ABSENCE")\
-                                         .eq("resolved", False)\
-                                         .execute()
-                            if existing.data and len(existing.data) > 0:
-                                # Alert already active, don't duplicate
-                                continue
-                        except Exception as e_check:
-                            print(f"Error checking existing prolonged absence alerts for {t_id}: {e_check}")
+        # 1. Single batch query for all processed captures
+        captures_res = db.table("captures")\
+                         .select("tiger_id, station, timestamp, latitude, longitude")\
+                         .eq("status", "processed")\
+                         .order("timestamp", desc=True)\
+                         .execute()
+        captures = captures_res.data or []
+        if not captures:
+            return []
 
-                        msg = f"PROLONGED ABSENCE ALERT: Tiger {t_id} has not been recorded across the sensor grid for {days_absent} days (Last seen: {last_cap.get('station')})."
-                        evidence = {
-                            "days_absent": days_absent,
-                            "last_seen_station": last_cap.get("station"),
-                            "last_seen_timestamp": ts_str,
-                            "last_location": {
-                                "lat": last_cap.get("latitude"),
-                                "lon": last_cap.get("longitude")
-                            },
-                            "survey_artefact_check": "Camera station operating normally with recent pings from other fauna."
-                        }
-                        add_alert(t_id, "PROLONGED_ABSENCE", "WARNING", msg, evidence)
-                        alerts_raised.append({"tiger_id": t_id, "days_absent": days_absent})
-                except Exception as ex:
-                    print(f"Error parsing timestamp for tiger {t_id}: {ex}")
+        # Find latest capture per tiger in memory (O(N))
+        latest_by_tiger = {}
+        station_recent_activity = {}
+        for c in captures:
+            t_id = c.get("tiger_id")
+            st = c.get("station")
+            ts = c.get("timestamp")
+            if t_id and t_id not in latest_by_tiger:
+                latest_by_tiger[t_id] = c
+            if st and st not in station_recent_activity and ts:
+                station_recent_activity[st] = ts
+
+        # 2. Single batch query for all active PROLONGED_ABSENCE alerts
+        active_alerts_res = db.table("alerts")\
+                              .select("tiger_id")\
+                              .eq("alert_type", "PROLONGED_ABSENCE")\
+                              .eq("resolved", False)\
+                              .execute()
+        existing_alert_tigers = {a["tiger_id"] for a in (active_alerts_res.data or []) if a.get("tiger_id")}
+
+        # 3. Evaluate each tiger against absence threshold
+        for t_id, last_cap in latest_by_tiger.items():
+            if t_id in existing_alert_tigers:
+                continue
+
+            ts_str = last_cap.get("timestamp")
+            if not ts_str:
+                continue
+
+            try:
+                dt = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+                days_absent = (now - dt).days
+
+                if days_absent >= absence_threshold_days:
+                    station_name = last_cap.get("station")
+                    camera_active = False
+                    if station_name and station_name in station_recent_activity:
+                        last_st_ts = station_recent_activity[station_name]
+                        try:
+                            st_dt = datetime.fromisoformat(last_st_ts.replace("Z", "+00:00"))
+                            if (now - st_dt).days <= 7:
+                                camera_active = True
+                        except Exception:
+                            camera_active = True
+
+                    survey_check = "CONFIRMED: Camera station is operating normally." if camera_active else "SUSPECTED ARTEFACT: Sensor station might be inactive."
+                    confidence = 0.90 if camera_active else 0.40
+                    severity = "WARNING" if camera_active else "INFO"
+
+                    msg = f"PROLONGED ABSENCE ALERT: Tiger {t_id} has not been recorded across the sensor grid for {days_absent} days (Last seen: {station_name})."
+                    evidence = {
+                        "days_absent": days_absent,
+                        "last_seen_station": station_name,
+                        "last_seen_timestamp": ts_str,
+                        "last_location": {
+                            "lat": last_cap.get("latitude"),
+                            "lon": last_cap.get("longitude")
+                        },
+                        "survey_artefact_check": survey_check,
+                        "confidence": confidence
+                    }
+                    add_alert(t_id, "PROLONGED_ABSENCE", severity, msg, evidence)
+                    alerts_raised.append({"tiger_id": t_id, "days_absent": days_absent})
+            except Exception as ex:
+                print(f"Error parsing timestamp for tiger {t_id}: {ex}")
+
+        _last_absence_check_time = now
+        _cached_absence_alerts = alerts_raised
     except Exception as e:
         print(f"Error checking prolonged absences: {e}")
         

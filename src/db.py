@@ -148,44 +148,114 @@ def update_capture_resolution(capture_id: int, tiger_id: str, status: str):
 
 # --- Alerts Table Helper Functions ---
 
-def add_alert(tiger_id: str, alert_type: str, severity: str, message: str, station: str = None, 
-              latitude: float = None, longitude: float = None, timestamp: str = None):
-    """Creates a new spatial alert in the alerts table."""
+import time
+import threading
+
+_alerts_cache_lock = threading.Lock()
+_alerts_cache = None
+_alerts_cache_timestamp = 0
+_ALERTS_CACHE_TTL = 3.0  # 3-second cache TTL for high-frequency dashboard queries
+
+def invalidate_alerts_cache():
+    """Invalidates the in-memory alerts cache."""
+    global _alerts_cache, _alerts_cache_timestamp
+    with _alerts_cache_lock:
+        _alerts_cache = None
+        _alerts_cache_timestamp = 0
+
+def add_alert(tiger_id: str, alert_type: str, severity: str, message: str, evidence: dict = None, 
+              station: str = None, latitude: float = None, longitude: float = None, timestamp: str = None):
+    """Creates a new threat / spatial alert in the alerts table with JSONB evidence."""
     if not supabase:
         return []
     try:
+        ev = evidence if isinstance(evidence, dict) else {}
+        if station and "station" not in ev:
+            ev["station"] = station
+        if latitude is not None and longitude is not None and "location" not in ev:
+            ev["location"] = {"lat": latitude, "lon": longitude}
+            
         data = {
             "tiger_id": tiger_id,
             "alert_type": alert_type,
             "severity": severity,
             "message": message,
-            "resolved": False
+            "resolved": False,
+            "evidence": ev
         }
         if timestamp:
             data["timestamp"] = timestamp
+            
         response = supabase.table("alerts").insert(data).execute()
+        invalidate_alerts_cache()
         return response.data or []
     except Exception as e:
         print(f"[DB Error] add_alert: {e}")
         return []
 
-def get_active_alerts():
-    """Retrieves all unresolved alerts."""
+def get_active_alerts(force_refresh: bool = False):
+    """Retrieves all unresolved threat alerts with high-performance memory caching."""
+    global _alerts_cache, _alerts_cache_timestamp
+    now = time.time()
+    
+    if not force_refresh and _alerts_cache is not None and (now - _alerts_cache_timestamp) < _ALERTS_CACHE_TTL:
+        return _alerts_cache
+
+    if not supabase:
+        return []
+        
+    try:
+        response = supabase.table("alerts")\
+                           .select("*")\
+                           .eq("resolved", False)\
+                           .order("id", desc=True)\
+                           .execute()
+        results = response.data or []
+        with _alerts_cache_lock:
+            _alerts_cache = results
+            _alerts_cache_timestamp = now
+        return results
+    except Exception as e:
+        print(f"[DB Error] get_active_alerts: {e}")
+        return _alerts_cache or []
+
+def get_all_alerts(limit: int = 100):
+    """Retrieves historical threat alerts (resolved and active)."""
     if not supabase:
         return []
     try:
-        response = supabase.table("alerts").select("*").eq("resolved", False).order("id", desc=True).execute()
+        response = supabase.table("alerts")\
+                           .select("*")\
+                           .order("id", desc=True)\
+                           .limit(limit)\
+                           .execute()
         return response.data or []
     except Exception as e:
-        print(f"[DB Error] get_active_alerts: {e}")
+        print(f"[DB Error] get_all_alerts: {e}")
+        return []
+
+def get_alerts_for_tiger(tiger_id: str):
+    """Retrieves all threat alerts associated with a specific tiger ID."""
+    if not supabase:
+        return []
+    try:
+        response = supabase.table("alerts")\
+                           .select("*")\
+                           .eq("tiger_id", tiger_id)\
+                           .order("id", desc=True)\
+                           .execute()
+        return response.data or []
+    except Exception as e:
+        print(f"[DB Error] get_alerts_for_tiger: {e}")
         return []
 
 def resolve_alert(alert_id: int):
-    """Marks an alert as resolved."""
+    """Marks an alert as resolved and invalidates cache."""
     if not supabase:
         return []
     try:
         response = supabase.table("alerts").update({"resolved": True}).eq("id", alert_id).execute()
+        invalidate_alerts_cache()
         return response.data or []
     except Exception as e:
         print(f"[DB Error] resolve_alert: {e}")
