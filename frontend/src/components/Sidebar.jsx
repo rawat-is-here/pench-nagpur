@@ -64,10 +64,7 @@ export default function Sidebar({ onRefresh, isRefreshing }) {
             <Layers size={16} />
             <span>Home Ranges & MCP</span>
           </NavLink>
-          <NavLink to="/sightings" className={getNavClass}>
-            <MapPin size={16} />
-            <span>Telemetry Timeline</span>
-          </NavLink>
+
         </div>
 
         <div className="sidebar-section">
