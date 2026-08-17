@@ -9,7 +9,7 @@ CREATE TABLE public.tigers (
 );
 CREATE TABLE public.captures (
   id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
-  tiger_id text NOT NULL,
+  tiger_id text,
   image_path text,
   station text,
   timestamp timestamp with time zone DEFAULT timezone('utc'::text, now()),
@@ -23,7 +23,7 @@ CREATE TABLE public.captures (
 );
 CREATE TABLE public.alerts (
   id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
-  tiger_id text NOT NULL,
+  tiger_id text,
   alert_type text,
   severity text,
   message text,

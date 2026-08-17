@@ -38,7 +38,7 @@ def get_all_tigers():
 
 # --- Captures Table Helper Functions ---
 
-def add_capture(tiger_id: str, image_path: str, station: str, timestamp: str, latitude: float, longitude: float, status: str, confidence: float):
+def add_capture(tiger_id: str, image_path: str, station: str, timestamp: str, latitude: float, longitude: float, status: str, confidence: float, embedding = None):
     """Logs a new camera trap capture."""
     data = {
         "tiger_id": tiger_id,
@@ -50,6 +50,8 @@ def add_capture(tiger_id: str, image_path: str, station: str, timestamp: str, la
         "status": status,
         "confidence": confidence
     }
+    if embedding is not None:
+        data["embedding"] = embedding
     response = supabase.table("captures").insert(data).execute()
     return response.data
 

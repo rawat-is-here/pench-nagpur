@@ -143,8 +143,7 @@ async def upload_image(file: UploadFile = File(...)):
             "message": "No animal detected. Image moved to quarantine."
         }
     
-    # --- TASK 2: Identification ---
-    tiger_id, distance, match_status, match_message = match_tiger(file_path, bbox)
+    tiger_id, distance, match_status, match_message, embedding = match_tiger(file_path, bbox)
     
     # Enroll tiger if it's new
     if match_status == "enrolled":
@@ -167,7 +166,8 @@ async def upload_image(file: UploadFile = File(...)):
             latitude=lat,
             longitude=lon,
             status=capture_status,
-            confidence=round(1.0 - distance, 4)
+            confidence=round(1.0 - distance, 4),
+            embedding=embedding
         )
     except Exception as e:
         print(f"Error saving capture in DB: {e}")
@@ -338,7 +338,7 @@ async def bulk_triage(req: BulkTriageRequest):
             # It has an animal, run identification
             processed_count += 1
             try:
-                tiger_id, distance, match_status, match_message = match_tiger(filepath, bbox)
+                tiger_id, distance, match_status, match_message, embedding = match_tiger(filepath, bbox)
                 
                 # If new tiger, enroll it in Supabase
                 if match_status == "enrolled":
@@ -361,7 +361,8 @@ async def bulk_triage(req: BulkTriageRequest):
                     latitude=lat,
                     longitude=lon,
                     status=capture_status,
-                    confidence=round(1.0 - distance, 4)
+                    confidence=round(1.0 - distance, 4),
+                    embedding=embedding
                 )
                 
                 # Trigger alerts check
@@ -391,3 +392,7 @@ async def bulk_triage(req: BulkTriageRequest):
         "manual_time_saved_seconds": time_saved_seconds,
         "message": f"Successfully processed {total_frames} frames. Quarantined {quarantined_count} blank images."
     }
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("src.main:app", host="127.0.0.1", port=8000, reload=True)
