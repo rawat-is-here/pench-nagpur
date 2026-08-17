@@ -142,7 +142,9 @@ def extract_features(image_path, bbox=None):
     else:
         flank = image
         
-    tensor = transform(flank).unsqueeze(0).to(device)
+    # Preprocess the flank to highlight the stripe pattern and remove noise
+    preprocessed_flank = preprocess_stripes(flank)
+    tensor = transform(preprocessed_flank).unsqueeze(0).to(device)
     
     with torch.no_grad():
         features = model(tensor)
