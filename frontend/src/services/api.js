@@ -32,6 +32,9 @@ export const resolveReview = (data) => api.post('/resolve_review', data);
 // Safe Quarantine Recovery
 export const getQuarantinedImages = () => api.get('/quarantined_images');
 export const restoreQuarantine = (filename) => api.post(`/restore_quarantine/${filename}`);
+export const deleteQuarantinedImage = (filename) => api.delete(`/quarantined_images/${filename}`);
+export const bulkDeleteQuarantinedImages = (filenames) => api.post('/quarantined_images/bulk_delete', { filenames });
+export const manuallyEnterQuarantine = (filename) => api.post(`/manually_enter_quarantine/${filename}`);
 
 // Image Upload & Ingestion (Single & Bulk)
 export const uploadCameraTrap = (formData) =>

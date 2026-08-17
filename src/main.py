@@ -704,6 +704,72 @@ async def bulk_triage(req: BulkTriageRequest):
         "message": f"Processed {total_frames} frames in {elapsed_time}s ({quarantined_count} blank images quarantined)."
     }
 
+class BulkDeleteRequest(BaseModel):
+    filenames: list[str]
+
+@app.delete("/quarantined_images/{filename}")
+async def delete_quarantined_image(filename: str):
+    try:
+        path = os.path.join("data/quarantine", filename)
+        if os.path.exists(path):
+            os.remove(path)
+            return {"status": "success", "message": f"Successfully deleted {filename} permanently."}
+        return {"status": "error", "message": f"File {filename} not found."}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+@app.post("/quarantined_images/bulk_delete")
+async def bulk_delete_quarantined_images(req: BulkDeleteRequest):
+    try:
+        deleted = []
+        for filename in req.filenames:
+            path = os.path.join("data/quarantine", filename)
+            if os.path.exists(path):
+                os.remove(path)
+                deleted.append(filename)
+        return {"status": "success", "message": f"Successfully deleted {len(deleted)} files.", "deleted": deleted}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+@app.post("/manually_enter_quarantine/{filename}")
+async def manually_enter_quarantine(filename: str):
+    quarantine_path = os.path.join("data/quarantine", filename)
+    raw_path = os.path.join("data/raw", filename)
+    
+    if not os.path.exists(quarantine_path):
+        return {"status": "error", "message": f"File '{filename}' not found in quarantine."}
+        
+    try:
+        # Move file to raw directory
+        shutil.move(quarantine_path, raw_path)
+        
+        # Extract telemetry metadata dynamically from EXIF or filename
+        telemetry = get_image_telemetry(raw_path)
+        lat = telemetry.get("lat")
+        lon = telemetry.get("lon")
+        station = telemetry.get("station")
+        timestamp = telemetry.get("timestamp")
+        
+        # Add to captures table with pending_review status
+        from src.db import add_capture
+        add_capture(
+            tiger_id="T-001",
+            image_path=f"data/raw/{filename}",
+            station=station,
+            timestamp=timestamp,
+            latitude=lat,
+            longitude=lon,
+            status="pending_review",
+            confidence=0.50
+        )
+        
+        return {"status": "success", "message": f"Successfully moved {filename} to manual review."}
+    except Exception as e:
+        # Rollback file move if DB insert fails
+        if os.path.exists(raw_path) and not os.path.exists(quarantine_path):
+            shutil.move(raw_path, quarantine_path)
+        return {"status": "error", "message": str(e)}
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("src.main:app", host="127.0.0.1", port=8000, reload=True)

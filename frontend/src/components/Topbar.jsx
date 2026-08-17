@@ -164,10 +164,6 @@ export default function Topbar({ onRefresh, isRefreshing }) {
       {/* Row 1: Heading & Actions */}
       <div className="flex w-full justify-between items-start gap-4">
         <div className="flex flex-col">
-          <div className="flex items-center gap-2 text-xs font-bold text-emerald-800 tracking-wider uppercase">
-            <Radio size={12} className="text-emerald-600 animate-pulse" />
-            Live Pench Telemetry Feed
-          </div>
           <h1 className="text-xl font-extrabold text-forest-950 tracking-tight leading-tight mt-0.5">
             Reserve Operations Command Center
           </h1>

@@ -1,6 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Archive, ShieldCheck, Loader2, RotateCcw, Search, FileImage } from 'lucide-react';
-import { getQuarantinedImages, restoreQuarantine } from '../services/api';
+import { ShieldCheck, Loader2, Search, FileImage, Trash2, FilePlus, CheckSquare, Square } from 'lucide-react';
+import { 
+  getQuarantinedImages, 
+  deleteQuarantinedImage, 
+  bulkDeleteQuarantinedImages, 
+  manuallyEnterQuarantine 
+} from '../services/api';
 
 export default function QuarantinedData() {
   const [images, setImages] = useState([]);
@@ -8,6 +13,7 @@ export default function QuarantinedData() {
   const [searchTerm, setSearchTerm] = useState('');
   const [actioningFile, setActioningFile] = useState(null);
   const [message, setMessage] = useState(null);
+  const [selectedFiles, setSelectedFiles] = useState([]);
 
   const fetchQuarantine = async () => {
     setLoading(true);
@@ -16,6 +22,7 @@ export default function QuarantinedData() {
       if (res.data) {
         setImages(res.data);
       }
+      setSelectedFiles([]); // Reset selection on reload
     } catch (err) {
       console.error('Error fetching quarantined images:', err);
     } finally {
@@ -27,22 +34,81 @@ export default function QuarantinedData() {
     fetchQuarantine();
   }, []);
 
-  const handleRestore = async (filename) => {
+  const handleDelete = async (filename) => {
+    if (!window.confirm(`Are you sure you want to permanently delete ${filename}?`)) return;
     setActioningFile(filename);
     setMessage(null);
     try {
-      const res = await restoreQuarantine(filename);
+      const res = await deleteQuarantinedImage(filename);
       if (res.data && res.data.status === 'success') {
-        setMessage({ type: 'success', text: `Successfully restored ${filename}. Target resolved: ${res.data.tiger_id || 'No animal (verified blank)'}.` });
+        setMessage({ type: 'success', text: `Successfully deleted ${filename} permanently.` });
         fetchQuarantine();
       } else {
-        setMessage({ type: 'error', text: res.data?.message || 'Failed to restore image.' });
+        setMessage({ type: 'error', text: res.data?.message || 'Failed to delete image.' });
       }
     } catch (err) {
-      console.error('Error restoring image:', err);
-      setMessage({ type: 'error', text: 'Error communicating with recovery endpoint.' });
+      console.error('Error deleting image:', err);
+      setMessage({ type: 'error', text: 'Error communicating with delete endpoint.' });
     } finally {
       setActioningFile(null);
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedFiles.length === 0) return;
+    if (!window.confirm(`Are you sure you want to permanently delete the ${selectedFiles.length} selected images?`)) return;
+    
+    setLoading(true);
+    setMessage(null);
+    try {
+      const res = await bulkDeleteQuarantinedImages(selectedFiles);
+      if (res.data && res.data.status === 'success') {
+        setMessage({ type: 'success', text: `Successfully deleted ${selectedFiles.length} images permanently.` });
+        fetchQuarantine();
+      } else {
+        setMessage({ type: 'error', text: res.data?.message || 'Failed to delete selected images.' });
+      }
+    } catch (err) {
+      console.error('Error in bulk delete:', err);
+      setMessage({ type: 'error', text: 'Error communicating with bulk delete endpoint.' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleManualEnter = async (filename) => {
+    setActioningFile(filename);
+    setMessage(null);
+    try {
+      const res = await manuallyEnterQuarantine(filename);
+      if (res.data && res.data.status === 'success') {
+        setMessage({ type: 'success', text: `Successfully moved ${filename} to manual review. View it under "Needs Manual Review".` });
+        fetchQuarantine();
+      } else {
+        setMessage({ type: 'error', text: res.data?.message || 'Failed to move image.' });
+      }
+    } catch (err) {
+      console.error('Error moving image to manual review:', err);
+      setMessage({ type: 'error', text: 'Error communicating with manual entry endpoint.' });
+    } finally {
+      setActioningFile(null);
+    }
+  };
+
+  const toggleSelectFile = (filename) => {
+    setSelectedFiles(prev => 
+      prev.includes(filename) 
+        ? prev.filter(f => f !== filename) 
+        : [...prev, filename]
+    );
+  };
+
+  const toggleSelectAll = () => {
+    const filteredNames = filtered.map(img => img.filename);
+    if (selectedFiles.length === filteredNames.length) {
+      setSelectedFiles([]);
+    } else {
+      setSelectedFiles(filteredNames);
     }
   };
 
@@ -62,7 +128,7 @@ export default function QuarantinedData() {
             Quarantined Staging (Blanks & Empty Frames)
           </h1>
           <p className="text-xs text-slate-600">
-            MegaDetector V6 classified empty files. Safely review and non-destructively recover false-positives back to the raw feed.
+            MegaDetector V6 classified empty files. Permanently delete blank frames to save reserve storage or route them to manual review.
           </p>
         </div>
 
@@ -95,8 +161,34 @@ export default function QuarantinedData() {
         </div>
       )}
 
-      {/* QUARANTINED GRID */}
-      <div className="panel p-5">
+      {/* ACTION BAR AND GRID */}
+      <div className="panel p-5 space-y-4">
+        {images.length > 0 && !loading && (
+          <div className="flex justify-between items-center bg-surface-subtle p-3 rounded-lg border border-surface-border text-xs">
+            <button 
+              onClick={toggleSelectAll}
+              className="flex items-center gap-2 font-bold text-forest-950 cursor-pointer"
+            >
+              {selectedFiles.length === filtered.length && filtered.length > 0 ? (
+                <CheckSquare size={16} className="text-forest-800" />
+              ) : (
+                <Square size={16} className="text-slate-400" />
+              )}
+              <span>Select All ({filtered.length} visible)</span>
+            </button>
+
+            {selectedFiles.length > 0 && (
+              <button 
+                onClick={handleBulkDelete}
+                className="btn btn-tiger bg-rose-700 hover:bg-rose-800 text-white font-bold py-1.5 px-4 flex items-center gap-1.5"
+              >
+                <Trash2 size={13} />
+                <span>Delete Selected ({selectedFiles.length})</span>
+              </button>
+            )}
+          </div>
+        )}
+
         {loading ? (
           <div className="flex flex-col items-center justify-center py-20 text-slate-400 gap-2">
             <Loader2 className="animate-spin text-forest-900" size={24} />
@@ -107,13 +199,26 @@ export default function QuarantinedData() {
             <ShieldCheck size={48} className="text-emerald-700" />
             <div className="text-center">
               <div className="text-sm font-bold text-forest-950">No Quarantined Files Found</div>
-              <p className="text-xs text-slate-500 mt-1">Quarantine database is clean or all search filters returned empty.</p>
+              <p className="text-xs text-slate-500 mt-1">Quarantine directory is clean or search criteria returned empty.</p>
             </div>
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5">
             {filtered.map((item) => (
-              <div key={item.filename} className="bg-surface-subtle border border-surface-border rounded-xl overflow-hidden hover:shadow-hover transition-all flex flex-col justify-between">
+              <div key={item.filename} className="bg-surface-subtle border border-surface-border rounded-xl overflow-hidden hover:shadow-hover transition-all flex flex-col justify-between relative">
+                
+                {/* SELECT CHECKBOX BOX */}
+                <button 
+                  onClick={() => toggleSelectFile(item.filename)}
+                  className="absolute top-2 left-2 z-10 bg-white/95 rounded-md p-1 border border-surface-border cursor-pointer shadow-sm"
+                >
+                  {selectedFiles.includes(item.filename) ? (
+                    <CheckSquare size={15} className="text-forest-800" />
+                  ) : (
+                    <Square size={15} className="text-slate-400" />
+                  )}
+                </button>
+
                 <div>
                   {/* PREVIEW IMAGE */}
                   <div className="aspect-video relative bg-slate-900 overflow-hidden flex items-center justify-center group border-b border-surface-border">
@@ -145,23 +250,22 @@ export default function QuarantinedData() {
                   </div>
                 </div>
 
-                <div className="p-4 pt-0 border-t border-surface-border/50 mt-2 flex justify-end">
+                <div className="p-4 pt-0 border-t border-surface-border/50 mt-2 grid grid-cols-2 gap-2">
                   <button
-                    onClick={() => handleRestore(item.filename)}
+                    onClick={() => handleDelete(item.filename)}
                     disabled={actioningFile === item.filename}
-                    className="btn btn-tiger text-[11px] font-bold py-1.5 px-3 flex items-center gap-1.5 w-full justify-center"
+                    className="btn btn-secondary text-rose-700 hover:text-rose-800 border-rose-200 text-[11px] font-bold py-1.5 px-2 flex items-center gap-1.5 justify-center"
                   >
-                    {actioningFile === item.filename ? (
-                      <>
-                        <Loader2 size={12} className="animate-spin" />
-                        <span>Restoring...</span>
-                      </>
-                    ) : (
-                      <>
-                        <RotateCcw size={12} />
-                        <span>Restore & Re-process</span>
-                      </>
-                    )}
+                    <Trash2 size={12} />
+                    <span>Delete</span>
+                  </button>
+                  <button
+                    onClick={() => handleManualEnter(item.filename)}
+                    disabled={actioningFile === item.filename}
+                    className="btn btn-tiger text-[11px] font-bold py-1.5 px-2 flex items-center gap-1.5 justify-center"
+                  >
+                    <FilePlus size={12} />
+                    <span>Manual Review</span>
                   </button>
                 </div>
               </div>

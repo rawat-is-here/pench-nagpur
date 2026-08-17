@@ -10,7 +10,6 @@ import {
   FileSpreadsheet,
   RefreshCw,
   Eye,
-  Radio,
   FolderSync,
   ShieldAlert,
   UserCheck
@@ -25,7 +24,6 @@ export default function Sidebar({ onRefresh, isRefreshing }) {
       {/* BRAND HEADER */}
       <div className="brand">
         <div className="brand-badge">
-          <Radio size={10} className="animate-pulse text-amber-400" />
           Pench Intelligence
         </div>
         <div className="flex items-center gap-3">
