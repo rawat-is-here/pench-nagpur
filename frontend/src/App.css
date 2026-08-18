@@ -1132,7 +1132,8 @@
   .brand-title,
   .brand-subtitle,
   .sidebar-section-title,
-  .nav-label {
+  .nav-label,
+  .nav-item span {
     display: none;
   }
 
@@ -1160,7 +1161,7 @@
 
 @media (max-width: 700px) {
   .topbar {
-    padding: 0 18px;
+    padding: 12px 18px;
   }
 
   .topbar-location {
