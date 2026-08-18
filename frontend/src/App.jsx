@@ -12,6 +12,8 @@ import Reports from './pages/Reports';
 import QuarantinedData from './pages/QuarantinedData';
 import ManualReview from './pages/ManualReview';
 
+import Landing from './pages/Landing';
+
 export default function App() {
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -29,8 +31,12 @@ export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<Layout onRefresh={handleRefresh} isRefreshing={isRefreshing} />}>
-          <Route index element={<Dashboard refreshTrigger={refreshTrigger} />} />
+        {/* Immersive Landing Page at root */}
+        <Route path="/" element={<Landing />} />
+
+        {/* Inner Admin Console wrapped in sidebar/topbar Layout */}
+        <Route element={<Layout onRefresh={handleRefresh} isRefreshing={isRefreshing} />}>
+          <Route path="dashboard" element={<Dashboard refreshTrigger={refreshTrigger} />} />
           <Route path="live-map" element={<LiveMap />} />
           <Route path="tigers" element={<Tigers />} />
           <Route path="territories" element={<Territories />} />

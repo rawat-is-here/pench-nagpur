@@ -1,5 +1,5 @@
 import React from 'react';
-import { NavLink } from 'react-router-dom';
+import { NavLink, Link } from 'react-router-dom';
 import {
   LayoutDashboard,
   Compass,
@@ -22,7 +22,7 @@ export default function Sidebar({ onRefresh, isRefreshing }) {
   return (
     <aside className="sidebar">
       {/* BRAND HEADER */}
-      <div className="brand">
+      <Link to="/" className="brand block hover:opacity-80 transition-opacity cursor-pointer" style={{ textDecoration: 'none' }}>
         <div className="flex items-center gap-3">
           <div className="brand-mark">
             <img src="/favicon.svg" alt="TerraStripe Logo" className="w-6 h-6 object-contain" />
@@ -31,13 +31,13 @@ export default function Sidebar({ onRefresh, isRefreshing }) {
             <div className="brand-title">TERRASTRIPE</div>
           </div>
         </div>
-      </div>
+      </Link>
 
       {/* NAVIGATION SECTIONS */}
       <div className="sidebar-scroll">
         <div className="sidebar-section">
           <div className="sidebar-section-title">Operations Core</div>
-          <NavLink to="/" end className={getNavClass}>
+          <NavLink to="/dashboard" className={getNavClass}>
             <LayoutDashboard size={16} />
             <span>Alert Mapping</span>
           </NavLink>

@@ -104,6 +104,7 @@ export default function Dashboard({ refreshTrigger }) {
   const [alerts, setAlerts] = useState([]);
   const [selectedTigerId, setSelectedTigerId] = useState('ALL');
   const [showRadius, setShowRadius] = useState(true);
+  const [alertFilter, setAlertFilter] = useState('ALL');
   
   // Upload states
   const [isUploading, setIsUploading] = useState(false);
@@ -218,6 +219,14 @@ export default function Dashboard({ refreshTrigger }) {
     : territories.filter(t => t.tiger_id === selectedTigerId);
 
   const selectedTerritoryData = territories.find(t => t.tiger_id === selectedTigerId);
+
+  const filteredAlerts = alerts.filter(al => {
+    if (alertFilter === 'ALL') return true;
+    if (alertFilter === 'CRITICAL' || alertFilter === 'WARNING') {
+      return al.severity === alertFilter;
+    }
+    return al.alert_type === alertFilter;
+  });
 
   return (
     <div className="space-y-6">
@@ -440,18 +449,34 @@ export default function Dashboard({ refreshTrigger }) {
             <ShieldAlert size={17} className="text-rose-600" />
             <span>Active Threat & Deviation Alerts</span>
           </div>
-          <span className="text-xs font-bold text-rose-700 font-mono">{alerts.length} Active</span>
+          
+          <div className="flex items-center gap-3">
+            <select
+              value={alertFilter}
+              onChange={(e) => setAlertFilter(e.target.value)}
+              className="bg-surface-subtle border border-surface-border text-forest-950 rounded-lg px-2.5 py-1 text-xs font-bold outline-none cursor-pointer"
+            >
+              <option value="ALL">All Severities & Types</option>
+              <option value="CRITICAL">🚨 Critical Severity Only</option>
+              <option value="WARNING">⚠️ Warning Severity Only</option>
+              <option value="RANGE_SHIFT">🏃 Range Shift Alerts</option>
+              <option value="BUFFER_PROXIMITY">🌲 Buffer Proximity Alerts</option>
+              <option value="VILLAGE_PROXIMITY">🏡 Village Proximity Alerts</option>
+              <option value="PROLONGED_ABSENCE">⏳ Prolonged Absence Alerts</option>
+            </select>
+            <span className="text-xs font-bold text-rose-700 font-mono">{filteredAlerts.length} Active</span>
+          </div>
         </div>
 
         <div className="p-4 space-y-3 max-h-[300px] overflow-y-auto">
-          {alerts.length === 0 ? (
+          {filteredAlerts.length === 0 ? (
             <div className="text-center py-8 text-slate-400 text-xs">
               <CheckCircle2 size={24} className="mx-auto text-emerald-500 mb-2" />
-              No active spatial alerts. All resident home ranges stable.
+              No matching active spatial alerts.
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {alerts.map((al) => (
+              {filteredAlerts.map((al) => (
                 <div
                   key={al.id}
                   className={`p-3 rounded-xl border text-xs space-y-2 flex flex-col justify-between ${
@@ -482,6 +507,136 @@ export default function Dashboard({ refreshTrigger }) {
               ))}
             </div>
           )}
+        </div>
+      </div>
+
+      {/* SEVERITY BREAKDOWN DONUT CHART */}
+      <div className="panel p-5 space-y-4">
+        <div className="border-b border-surface-border pb-3">
+          <h3 className="text-forest-950 font-bold text-sm flex items-center gap-2">
+            <TrendingUp size={16} className="text-rose-600" />
+            Threat Profile & Severity Breakdown
+          </h3>
+          <p className="text-[11px] text-slate-500 mt-0.5">
+            Proportional distribution of active alerts currently tracking in Pench Core & Buffer zones.
+          </p>
+        </div>
+
+        <div className="flex flex-col md:flex-row items-center justify-around gap-6 pt-2">
+          {/* SVG Donut Chart */}
+          <div className="relative w-36 h-36 flex items-center justify-center">
+            <svg width="140" height="140" viewBox="0 0 140 140" style={{ transform: 'rotate(-90deg)' }}>
+              {/* Background / Base Circle */}
+              <circle
+                cx="70"
+                cy="70"
+                r="30"
+                fill="none"
+                stroke="#f1f5f9"
+                strokeWidth="12"
+              />
+              
+              {alerts.length === 0 ? (
+                /* All stable green state */
+                <circle
+                  cx="70"
+                  cy="70"
+                  r="30"
+                  fill="none"
+                  stroke="#10b981"
+                  strokeWidth="12"
+                />
+              ) : (
+                <>
+                  {/* Critical slice */}
+                  {alerts.filter(al => al.severity === 'CRITICAL').length > 0 && (
+                    <circle
+                      cx="70"
+                      cy="70"
+                      r="30"
+                      fill="none"
+                      stroke="#f43f5e"
+                      strokeWidth="12"
+                      strokeDasharray={`${(alerts.filter(al => al.severity === 'CRITICAL').length / alerts.length) * 188.5} 188.5`}
+                      strokeDashoffset="0"
+                    />
+                  )}
+                  {/* Warning slice */}
+                  {alerts.filter(al => al.severity === 'WARNING').length > 0 && (
+                    <circle
+                      cx="70"
+                      cy="70"
+                      r="30"
+                      fill="none"
+                      stroke="#fbbf24"
+                      strokeWidth="12"
+                      strokeDasharray={`${(alerts.filter(al => al.severity === 'WARNING').length / alerts.length) * 188.5} 188.5`}
+                      strokeDashoffset={`-${(alerts.filter(al => al.severity === 'CRITICAL').length / alerts.length) * 188.5}`}
+                    />
+                  )}
+                  {/* Info slice */}
+                  {alerts.filter(al => al.severity === 'INFO').length > 0 && (
+                    <circle
+                      cx="70"
+                      cy="70"
+                      r="30"
+                      fill="none"
+                      stroke="#3b82f6"
+                      strokeWidth="12"
+                      strokeDasharray={`${(alerts.filter(al => al.severity === 'INFO').length / alerts.length) * 188.5} 188.5`}
+                      strokeDashoffset={`-${((alerts.filter(al => al.severity === 'CRITICAL').length + alerts.filter(al => al.severity === 'WARNING').length) / alerts.length) * 188.5}`}
+                    />
+                  )}
+                </>
+              )}
+            </svg>
+
+            {/* Inner Text Overlay */}
+            <div className="absolute flex flex-col items-center justify-center text-center">
+              <span className="text-xl font-extrabold text-forest-950 leading-none">
+                {alerts.length}
+              </span>
+              <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mt-0.5">
+                {alerts.length === 1 ? 'Alert' : 'Alerts'}
+              </span>
+            </div>
+          </div>
+
+          {/* Legend and stats */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 flex-1">
+            <div className="p-3 bg-rose-50/50 border border-rose-100 rounded-xl space-y-1">
+              <div className="flex items-center gap-1.5 text-rose-800 font-bold text-[11px]">
+                <span className="w-2 h-2 rounded-full bg-rose-500 inline-block"></span>
+                <span>Critical Alerts</span>
+              </div>
+              <div className="text-lg font-extrabold text-rose-950 font-mono">
+                {alerts.filter(al => al.severity === 'CRITICAL').length}
+              </div>
+              <div className="text-[10px] text-slate-500">Range shifts & Village borders</div>
+            </div>
+
+            <div className="p-3 bg-amber-50/50 border border-amber-100 rounded-xl space-y-1">
+              <div className="flex items-center gap-1.5 text-amber-800 font-bold text-[11px]">
+                <span className="w-2 h-2 rounded-full bg-amber-500 inline-block"></span>
+                <span>Warnings</span>
+              </div>
+              <div className="text-lg font-extrabold text-amber-950 font-mono">
+                {alerts.filter(al => al.severity === 'WARNING').length}
+              </div>
+              <div className="text-[10px] text-slate-500">Buffer proximity anomalies</div>
+            </div>
+
+            <div className="p-3 bg-blue-50/50 border border-blue-100 rounded-xl space-y-1">
+              <div className="flex items-center gap-1.5 text-blue-800 font-bold text-[11px]">
+                <span className="w-2 h-2 rounded-full bg-blue-500 inline-block"></span>
+                <span>Info Pings</span>
+              </div>
+              <div className="text-lg font-extrabold text-blue-950 font-mono">
+                {alerts.filter(al => al.severity === 'INFO').length}
+              </div>
+              <div className="text-[10px] text-slate-500">General sensor system updates</div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
