@@ -121,11 +121,9 @@ export default function QuarantinedData() {
       {/* PAGE HEADING */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <div className="text-xs font-bold text-amber-800 tracking-wider uppercase">
-            Safe Triage Quarantine Center
-          </div>
+          
           <h1 className="text-2xl font-extrabold text-forest-950 tracking-tight">
-            Quarantined Staging (Blanks & Empty Frames)
+            Quarantine Stage
           </h1>
           
         </div>

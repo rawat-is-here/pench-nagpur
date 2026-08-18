@@ -151,12 +151,9 @@ export default function Territories() {
       {/* Header telemetry summary */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2 text-xs font-mono text-emerald-800 uppercase tracking-widest">
-            <Layers size={14} />
-            <span>Spatial Ecology & Territorial Dynamics</span>
-          </div>
+          
           <h1 className="text-2xl font-black text-forest-950 tracking-tight">
-            Home Range & Centroid Patrol Radii
+            Home Range & Centroid Radius
           </h1>
         </div>
 

@@ -129,12 +129,9 @@ export default function CameraTraps({ defaultTab = 'batch' }) {
       {/* PAGE HEADER */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <div className="text-xs font-bold text-emerald-800 tracking-wider uppercase flex items-center gap-1.5">
-            <Camera size={14} />
-            Optical Sensor Grid & Batch Ingestion
-          </div>
+          
           <h1 className="text-2xl font-extrabold text-forest-950 tracking-tight">
-            Camera Trap Stations & Triage Terminal
+           Import SD and Camera Sensors
           </h1>
           
         </div>

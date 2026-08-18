@@ -165,7 +165,7 @@ export default function Topbar({ onRefresh, isRefreshing }) {
       <div className="flex w-full justify-between items-start gap-4">
         <div className="flex flex-col">
           <h1 className="text-xl font-extrabold text-forest-950 tracking-tight leading-tight mt-0.5">
-            Pench Reserve Alert Mapping Console
+            TerraStripe Dashboard
           </h1>
           
         </div>

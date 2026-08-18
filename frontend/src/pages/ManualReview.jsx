@@ -70,11 +70,9 @@ export default function ManualReview() {
       {/* PAGE HEADING */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <div className="text-xs font-bold text-emerald-800 tracking-wider uppercase">
-            Human-in-the-Loop Review Hub
-          </div>
+          
           <h1 className="text-2xl font-extrabold text-forest-950 tracking-tight">
-            Biometric Matches Awaiting Verification
+            Human in the loop - Verification
           </h1>
           
         </div>

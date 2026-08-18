@@ -133,12 +133,9 @@ export default function LiveMap() {
       {/* PAGE HEADER */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <div className="text-xs font-bold text-emerald-800 tracking-wider uppercase flex items-center gap-1.5">
-            <Compass size={14} />
-            Pench Tiger Reserve Geospatial Intelligence
-          </div>
+          
           <h1 className="text-2xl font-extrabold text-forest-950 tracking-tight">
-            Tactical Wildlife GIS & Territory Mapping
+            Territory mapping for each Tiger
           </h1>
           
         </div>

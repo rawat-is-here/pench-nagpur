@@ -235,7 +235,7 @@ export default function Dashboard({ refreshTrigger }) {
         <div className="panel-header flex flex-wrap justify-between items-center gap-3">
           <div className="panel-title">
             <Compass size={17} className="text-emerald-700" />
-            <span>Geospatial Territories & Centroid Patrol Radii</span>
+            <span>Alert Mapping and threat Detection</span>
           </div>
 
           {/* TIGER SELECTOR DROPDOWN & RADIUS TOGGLE */}

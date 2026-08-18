@@ -7,9 +7,7 @@ export default function Analytics() {
       {/* PAGE HEADING */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <div className="text-xs font-bold text-emerald-800 tracking-wider uppercase">
-            Inference Performance & Pipeline ROI
-          </div>
+          
           <h1 className="text-2xl font-extrabold text-forest-950 tracking-tight">
             System & Triage Analytics
           </h1>

@@ -447,12 +447,9 @@ export default function Reports() {
       {/* PAGE HEADING */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <div className="text-xs font-bold text-emerald-800 tracking-wider uppercase flex items-center gap-1.5">
-            <Shield size={14} />
-            Official Forest Department Reporting & Intelligence Dossiers
-          </div>
+          
           <h1 className="text-2xl font-extrabold text-forest-950 tracking-tight">
-            Reserve Intelligence Exports
+            PDF Reports for Analysis
           </h1>
           <p className="text-xs text-slate-500 mt-1">
             Pench Tiger Reserve · High-Resolution Official Field Director Intelligence & Wildlife Briefings
@@ -467,28 +464,18 @@ export default function Reports() {
             <div className="w-10 h-10 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center border border-emerald-200">
               <FileText size={20} />
             </div>
-            <span className="badge-tag badge-info">Official Forest Dept PDF</span>
           </div>
 
           <div>
             <h3 className="text-forest-950 font-extrabold text-base">
-              Weekly Sector Activity & Territorial Intelligence Briefing
+              Generate PDF file
             </h3>
             <p className="text-xs text-slate-600 mt-1.5 leading-relaxed">
-              Generates an official, print-ready Executive Wildlife Dossier for the Field Director, Range Forest Officers (RFOs), and State Wildlife Headquarters. Includes resident tiger territorial counts, active corridor deviation alerts, camera trap triage metrics, and anti-poaching patrol recommendations.
+              Generates an official, pdf file with all the data including alerts and profile for each tiger for the analysis of forest department
             </p>
           </div>
 
-          <div className="bg-slate-50 border border-surface-border rounded-lg p-3 text-xs space-y-1.5 text-slate-700">
-            <div className="flex items-center gap-2 text-forest-900 font-bold">
-              <CheckCircle2 size={14} className="text-emerald-600" />
-              <span>Includes Real-Time Field Directives & NTCA Format Standards</span>
-            </div>
-            <div className="flex items-center gap-2 text-forest-900 font-bold">
-              <CheckCircle2 size={14} className="text-emerald-600" />
-              <span>Full 30 Resident Individual Breakdown & Active Threat Log</span>
-            </div>
-          </div>
+          
 
           <button 
             onClick={generateForestDeptPDF}
@@ -503,7 +490,7 @@ export default function Reports() {
             ) : (
               <>
                 <Printer size={14} />
-                Export Forest Department Executive PDF
+                Click to view or download PDF
               </>
             )}
           </button>
