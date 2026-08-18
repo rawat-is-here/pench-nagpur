@@ -51,7 +51,7 @@ export default function Analytics() {
             <CheckCircle2 size={14} className="text-emerald-600" />
             Detection Precision
           </div>
-          <div className="stat-value text-emerald-800">99.1%</div>
+          <div className="stat-value text-emerald-800">85-90%</div>
           <div className="stat-meta">Verified across 142 optical nodes</div>
         </div>
       </div>
